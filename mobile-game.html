@@ -1,0 +1,2913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Goblin Raiders - Mobile</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+        
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        #gameCanvas {
+            position: absolute;
+            width: 100vw;
+            height: 100vh;
+            top: 0;
+            left: 0;
+            background: #87CEEB;
+            touch-action: none;
+        }
+        
+        /* Virtual Joystick */
+        #joystickContainer {
+            position: absolute;
+            bottom: 5%;
+            left: 5%;
+            width: 102px; /* 15% smaller: 120 * 0.85 = 102 */
+            height: 102px;
+            z-index: 100;
+        }
+        
+        #joystickBase {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            backdrop-filter: blur(10px);
+        }
+        
+        #joystickHandle {
+            position: absolute;
+            width: 50%;
+            height: 50%;
+            background: rgba(255, 255, 255, 0.8);
+            border: 2px solid rgba(255, 255, 255, 0.9);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease-out;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Attack Buttons - Diamond Layout */
+        #attackButtonsContainer {
+            position: absolute;
+            bottom: 5%;
+            right: 5%;
+            width: 132px; /* 10% bigger: 120 * 1.1 = 132 */
+            height: 132px;
+            z-index: 100;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            gap: 3px;
+            align-items: center;
+            justify-items: center;
+        }
+        
+        .attack-button {
+            width: 40px; /* 10% bigger: 36 * 1.1 = 39.6 ≈ 40 */
+            height: 40px;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 8px; /* Slightly bigger font */
+            font-weight: bold;
+            text-align: center;
+            user-select: none;
+            touch-action: none;
+            transition: all 0.1s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transform: rotate(45deg);
+        }
+        
+        .attack-button span {
+            transform: rotate(-45deg);
+        }
+        
+        .attack-button:active {
+            transform: rotate(45deg) scale(0.9);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        #attackBasic {
+            background: rgba(100, 100, 100, 0.5);
+            grid-column: 2;
+            grid-row: 1;
+            position: relative;
+            transition: background 0.2s ease, filter 0.2s ease;
+            filter: grayscale(100%);
+            opacity: 0.6;
+            pointer-events: none; /* Disabled until level 2 */
+        }
+        
+        #attackBasic:active {
+            background: rgba(100, 100, 100, 0.5);
+        }
+        
+        #attackBasic.on-cooldown {
+            background: rgba(100, 100, 100, 0.5) !important;
+            filter: grayscale(100%);
+        }
+        
+        #attackBasic.enabled {
+            background: rgba(100, 150, 255, 0.7);
+            filter: none;
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        #attackBasic.enabled:active {
+            background: rgba(80, 130, 235, 0.9);
+        }
+        
+        #attackStrong {
+            background: rgba(255, 100, 100, 0.7);
+            grid-column: 3;
+            grid-row: 2;
+            position: relative;
+            transition: background 0.2s ease, filter 0.2s ease;
+        }
+        
+        #attackStrong:active {
+            background: rgba(235, 80, 80, 0.9);
+        }
+        
+        #attackStrong.on-cooldown {
+            background: rgba(100, 100, 100, 0.5) !important;
+            filter: grayscale(100%);
+        }
+        
+        #attackDash {
+            background: rgba(100, 255, 100, 0.7);
+            grid-column: 1;
+            grid-row: 2;
+            pointer-events: auto;
+            position: relative;
+            transition: background 0.2s ease, filter 0.2s ease;
+        }
+        
+        #attackDash.on-cooldown {
+            background: rgba(100, 100, 100, 0.5) !important;
+            filter: grayscale(100%);
+        }
+        
+        .cooldown-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        
+        .cooldown-overlay.active {
+            display: flex;
+        }
+        
+        .cooldown-text {
+            color: #000000;
+            font-size: 12px;
+            font-weight: 900;
+            transform: rotate(-45deg);
+            text-shadow: 1px 1px 3px rgba(255, 255, 255, 0.9), -1px -1px 3px rgba(255, 255, 255, 0.9);
+            letter-spacing: 0.5px;
+        }
+        
+        #swapWeapon {
+            background: rgba(200, 100, 255, 0.7);
+            grid-column: 2;
+            grid-row: 3;
+        }
+        
+        #swapWeapon:active {
+            background: rgba(180, 80, 235, 0.9);
+        }
+        
+        #attackBasic.hidden {
+            display: none;
+        }
+        
+        #attackDash {
+            background: rgba(100, 255, 100, 0.7);
+            grid-column: 1;
+            grid-row: 2;
+            pointer-events: auto;
+        }
+        
+        #attackDash:active {
+            background: rgba(80, 235, 80, 0.9);
+        }
+        
+        /* Status Display - Hidden */
+        #statusDisplay {
+            display: none;
+        }
+        
+        /* Loading Screen */
+        #loadingScreen {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+            z-index: 200;
+        }
+        
+        #loadingScreen.hidden {
+            display: none;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Responsive adjustments */
+        @media (orientation: landscape) {
+            #gameContainer {
+                max-width: calc(100vh * 2 / 3);
+                max-height: 100vh;
+            }
+        }
+        
+        /* Ability Choice Modal - Old-school 2D style matching health/XP bars */
+        #abilityChoiceModal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 300;
+            flex-direction: column;
+        }
+        
+        #abilityChoiceModal.active {
+            display: flex;
+        }
+        
+        .ability-modal-title {
+            color: #ffd700;
+            font-size: 24px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.8);
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        
+        .ability-modal-subtitle {
+            color: #ffffff;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 25px;
+            text-align: center;
+            opacity: 0.9;
+        }
+        
+        .ability-choices-container {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
+        }
+        
+        .ability-choice {
+            background: #2a2a1e;
+            border: 2px solid #6a5a4a;
+            padding: 15px;
+            width: 300px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 
+                inset 1px 1px 0px rgba(255, 255, 255, 0.1),
+                inset -1px -1px 0px rgba(0, 0, 0, 0.5),
+                2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        
+        .ability-choice:hover {
+            background: #3a3a2e;
+            border-color: #8a7a6a;
+        }
+        
+        .ability-choice:active {
+            background: #1a1a0e;
+            box-shadow: 
+                inset 1px 1px 0px rgba(0, 0, 0, 0.5),
+                inset -1px -1px 0px rgba(255, 255, 255, 0.1);
+        }
+        
+        .ability-choice-title {
+            color: #ffd700;
+            font-size: 16px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 8px;
+            text-align: left;
+            text-shadow: 1px 1px 0px rgba(0, 0, 0, 0.8);
+        }
+        
+        .ability-choice-icon {
+            display: none; /* Hide emoji icons */
+        }
+        
+        .ability-choice-description {
+            color: #cccccc;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            line-height: 1.5;
+            text-align: left;
+        }
+        
+        .ability-choice.choice-a {
+            border-color: #8a5a4a;
+        }
+        
+        .ability-choice.choice-a:hover {
+            border-color: #aa7a6a;
+        }
+        
+        .ability-choice.choice-b {
+            border-color: #4a6a5a;
+        }
+        
+        .ability-choice.choice-b:hover {
+            border-color: #6ee7df;
+            box-shadow: 0 8px 25px rgba(110, 231, 223, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="loadingScreen">
+            <div class="spinner"></div>
+            <p>Loading map...</p>
+        </div>
+        
+        <!-- Ability Choice Modal -->
+        <div id="abilityChoiceModal">
+            <div class="ability-modal-title" id="abilityModalTitle">LEVEL UP!</div>
+            <div class="ability-modal-subtitle" id="abilityModalSubtitle">Choose your ability:</div>
+            <div class="ability-choices-container">
+                <div class="ability-choice choice-a" id="abilityChoiceA">
+                    <div class="ability-choice-icon" id="abilityIconA"></div>
+                    <div class="ability-choice-title" id="abilityTitleA"></div>
+                    <div class="ability-choice-description" id="abilityDescA"></div>
+                </div>
+                <div class="ability-choice choice-b" id="abilityChoiceB">
+                    <div class="ability-choice-icon" id="abilityIconB"></div>
+                    <div class="ability-choice-title" id="abilityTitleB"></div>
+                    <div class="ability-choice-description" id="abilityDescB"></div>
+                </div>
+                <div class="ability-choice choice-c" id="abilityChoiceC" style="display: none;">
+                    <div class="ability-choice-icon" id="abilityIconC"></div>
+                    <div class="ability-choice-title" id="abilityTitleC"></div>
+                    <div class="ability-choice-description" id="abilityDescC"></div>
+                </div>
+            </div>
+        </div>
+        
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="statusDisplay">
+            <div id="status">Ready</div>
+            <div id="position" style="font-size: 10px; opacity: 0.7;">Position: (0, 0)</div>
+        </div>
+        
+        <div id="joystickContainer">
+            <div id="joystickBase"></div>
+            <div id="joystickHandle"></div>
+        </div>
+        
+        <!-- Attack Buttons - Diamond Layout -->
+        <div id="attackButtonsContainer">
+            <div class="attack-button" id="attackBasic">
+                <span>MAGIC ATTACK</span>
+                <div class="cooldown-overlay" id="attackBasicCooldown">
+                    <span class="cooldown-text" id="attackBasicCooldownText">0.0</span>
+                </div>
+            </div>
+            <div class="attack-button" id="attackDash">
+                <span>DASH</span>
+                <div class="cooldown-overlay" id="attackDashCooldown">
+                    <span class="cooldown-text" id="attackDashCooldownText">0.0</span>
+                </div>
+            </div>
+            <div class="attack-button" id="attackStrong">
+                <span>ATTACK</span>
+                <div class="cooldown-overlay" id="attackStrongCooldown">
+                    <span class="cooldown-text" id="attackStrongCooldownText">0.0</span>
+                </div>
+            </div>
+            <div class="attack-button" id="swapWeapon"><span>SWAP</span></div>
+        </div>
+    </div>
+
+    <script src="map-loader.js"></script>
+    <script src="game-engine.js"></script>
+    <script>
+        // Mobile Game Setup
+        class MobileGame {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.game = null;
+                
+                // Joystick
+                this.joystickContainer = document.getElementById('joystickContainer');
+                this.joystickHandle = document.getElementById('joystickHandle');
+                this.joystickBase = document.getElementById('joystickBase');
+                this.joystickActive = false;
+                this.joystickCenter = { x: 0, y: 0 };
+                this.joystickRadius = 50;
+                this.joystickPosition = { x: 0, y: 0 };
+                this.joystickInput = { x: 0, y: 0 };
+                
+                // Setup
+                this.setupCanvas();
+                this.setupJoystick();
+                this.setupKeyboard();
+                this.setupGame();
+                // Setup attack buttons after game is created
+                this.setupAttackButtons();
+                // Initialize button visibility based on starting weapon mode
+                this.updateButtonVisibility();
+            }
+            
+            setupCanvas() {
+                // Canvas fills entire screen (100vw x 100vh)
+                const updateCanvasSize = () => {
+                    this.canvas.width = window.innerWidth;
+                    this.canvas.height = window.innerHeight;
+                };
+                
+                updateCanvasSize();
+                
+                // Update on resize
+                window.addEventListener('resize', () => {
+                    updateCanvasSize();
+                    if (this.game) {
+                        // Recalculate camera bounds if needed
+                    }
+                });
+            }
+            
+            setupKeyboard() {
+                // Add keyboard event listeners for WASD and arrow keys
+                window.addEventListener('keydown', (e) => {
+                    if (!this.game) return;
+                    const key = e.key.toLowerCase();
+                    // Handle WASD and arrow keys
+                    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+                        e.preventDefault();
+                        // Convert arrow keys to lowercase format
+                        if (key.startsWith('arrow')) {
+                            this.game.keys[key] = true;
+                        } else {
+                            this.game.keys[key] = true;
+                        }
+                    }
+                });
+                
+                window.addEventListener('keyup', (e) => {
+                    if (!this.game) return;
+                    const key = e.key.toLowerCase();
+                    // Handle WASD and arrow keys
+                    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+                        e.preventDefault();
+                        // Convert arrow keys to lowercase format
+                        if (key.startsWith('arrow')) {
+                            this.game.keys[key] = false;
+                        } else {
+                            this.game.keys[key] = false;
+                        }
+                    }
+                });
+                
+                // Make sure canvas can receive focus for keyboard events
+                if (this.canvas) {
+                    this.canvas.setAttribute('tabindex', '0');
+                    this.canvas.style.outline = 'none';
+                    // Focus canvas on click to ensure keyboard events work
+                    this.canvas.addEventListener('click', () => {
+                        this.canvas.focus();
+                    });
+                }
+            }
+            
+            setupAttackButtons() {
+                // Magic Attack (disabled until level 2 and spell selected)
+                this.attackBasic = document.getElementById('attackBasic');
+                this.attackBasic.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (this.game && this.game.xpSystem && this.game.xpSystem.level >= 2 && 
+                        (this.game.spells.fireSplitters || this.game.spells.shield || this.game.spells.spell3)) {
+                        this.performAttack('magic');
+                    }
+                });
+                this.attackBasic.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    if (this.game && this.game.xpSystem && this.game.xpSystem.level >= 2 && 
+                        (this.game.spells.fireSplitters || this.game.spells.shield || this.game.spells.spell3)) {
+                        this.performAttack('magic');
+                    }
+                });
+                
+                // Combined Attack Button (70% basic, 30% strong)
+                this.attackStrong = document.getElementById('attackStrong');
+                this.attackStrong.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.performRandomAttack();
+                });
+                this.attackStrong.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    this.performRandomAttack();
+                });
+                
+                // Swap Weapon
+                this.swapWeapon = document.getElementById('swapWeapon');
+                this.swapWeapon.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.swapWeaponMode();
+                });
+                this.swapWeapon.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    this.swapWeaponMode();
+                });
+                
+                // Store button references for dynamic updates
+                this.attackBasicBtn = this.attackBasic;
+                this.attackStrongBtn = this.attackStrong;
+                
+                // Dash
+                this.attackDash = document.getElementById('attackDash');
+                if (!this.attackDash) {
+                    console.error('Dash button not found!');
+                    return;
+                }
+                this.attackDash.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Dash button touched!');
+                    this.performDash();
+                });
+                this.attackDash.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Dash button clicked!');
+                    this.performDash();
+                });
+                console.log('Dash button setup complete');
+            }
+            
+            swapWeaponMode() {
+                if (!this.game || !this.game.character) return;
+                
+                // Don't allow weapon swap when dead (can swap while hurt)
+                if (this.game.character.isDead) {
+                    return;
+                }
+                
+                this.game.swapWeapon();
+                this.updateButtonVisibility(); // Update button text after weapon swap
+            }
+            
+            // Ability Choice Modal
+            updateAbilityChoiceModal() {
+                if (!this.game) return;
+                
+                const modal = document.getElementById('abilityChoiceModal');
+                if (!modal) return;
+                
+                if (this.game.isAbilityChoiceOpen && this.game.pendingAbilityChoice) {
+                    modal.classList.add('active');
+                    this.showAbilityChoices(this.game.pendingAbilityChoice);
+                } else {
+                    modal.classList.remove('active');
+                }
+            }
+            
+            showAbilityChoices(level) {
+                const titleEl = document.getElementById('abilityModalTitle');
+                const subtitleEl = document.getElementById('abilityModalSubtitle');
+                const iconA = document.getElementById('abilityIconA');
+                const titleA = document.getElementById('abilityTitleA');
+                const descA = document.getElementById('abilityDescA');
+                const iconB = document.getElementById('abilityIconB');
+                const titleB = document.getElementById('abilityTitleB');
+                const descB = document.getElementById('abilityDescB');
+                const choiceA = document.getElementById('abilityChoiceA');
+                const choiceB = document.getElementById('abilityChoiceB');
+                
+                titleEl.textContent = `LEVEL ${level}!`;
+                subtitleEl.textContent = 'Choose your new ability:';
+                
+                // Remove old event listeners by cloning
+                const newChoiceA = choiceA.cloneNode(true);
+                const newChoiceB = choiceB.cloneNode(true);
+                choiceA.parentNode.replaceChild(newChoiceA, choiceA);
+                choiceB.parentNode.replaceChild(newChoiceB, choiceB);
+                
+                // Update references after cloning
+                const updatedIconA = document.getElementById('abilityIconA');
+                const updatedTitleA = document.getElementById('abilityTitleA');
+                const updatedDescA = document.getElementById('abilityDescA');
+                const updatedIconB = document.getElementById('abilityIconB');
+                const updatedTitleB = document.getElementById('abilityTitleB');
+                const updatedDescB = document.getElementById('abilityDescB');
+                const updatedChoiceA = document.getElementById('abilityChoiceA');
+                const updatedChoiceB = document.getElementById('abilityChoiceB');
+                
+                // Hide third choice for all levels (only 2 choices)
+                const choiceC = document.getElementById('abilityChoiceC');
+                if (choiceC) choiceC.style.display = 'none';
+                
+                if (level === 2) {
+                    // Level 2: Spell selection (2 choices only)
+                    updatedIconA.textContent = '';
+                    updatedTitleA.textContent = 'FIRE SPLITTERS';
+                    updatedDescA.textContent = 'Cast a fire projectile that explodes after one animation cycle. Deals 35 damage. 10 second cooldown.';
+                    
+                    updatedIconB.textContent = '';
+                    updatedTitleB.textContent = 'SHIELD';
+                    updatedDescB.textContent = 'Create a magical shield that absorbs 5 attacks or lasts 20 seconds, whichever comes first. 30 second cooldown.';
+                } else if (level === 3) {
+                    // Level 3: Only 2 choices
+                    updatedIconA.textContent = '';
+                    updatedTitleA.textContent = 'MULTISHOT';
+                    updatedDescA.textContent = 'Your ranged attacks now fire 3 arrows in a spread pattern, hitting multiple enemies at once.';
+                    
+                    updatedIconB.textContent = '';
+                    updatedTitleB.textContent = 'ONE MAN SHOW';
+                    updatedDescB.textContent = 'Take 15% less damage from all sources and gain 15% bonus maximum health. Built to survive.';
+                } else if (level === 5) {
+                    updatedIconA.textContent = '';
+                    updatedTitleA.textContent = 'BERSERKER';
+                    updatedDescA.textContent = 'When your health drops below 50%, all your attacks deal 30% more damage. The lower you go, the harder you hit.';
+                    
+                    updatedIconB.textContent = '';
+                    updatedTitleB.textContent = 'VAMPIRIC STRIKES';
+                    updatedDescB.textContent = 'Every enemy you defeat restores 5 HP. Stay in the fight longer by taking down your foes.';
+                } else if (level === 8) {
+                    updatedIconA.textContent = '';
+                    updatedTitleA.textContent = 'TITAN\'S WRATH';
+                    updatedDescA.textContent = 'Your strong attacks now deal DOUBLE damage. Unleash devastating blows that can one-shot weaker enemies.';
+                    
+                    updatedIconB.textContent = '';
+                    updatedTitleB.textContent = 'SWIFT ASSASSIN';
+                    updatedDescB.textContent = 'All your attack and dash cooldowns are reduced by 40%. Attack faster, dash more often, dominate the battlefield.';
+                }
+                
+                // Add click handlers
+                updatedChoiceA.addEventListener('click', () => this.selectAbility('A'));
+                updatedChoiceA.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.selectAbility('A');
+                });
+                
+                updatedChoiceB.addEventListener('click', () => this.selectAbility('B'));
+                updatedChoiceB.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.selectAbility('B');
+                });
+            }
+            
+            selectAbility(choice) {
+                if (!this.game) return;
+                this.game.selectAbility(choice);
+                document.getElementById('abilityChoiceModal').classList.remove('active');
+                this.updateButtonVisibility();
+            }
+            
+            updateButtonVisibility() {
+                if (!this.game || !this.game.character) return;
+                const isRanged = this.game.character.weaponMode === 'ranged';
+                
+                // Magic Attack button - always visible in both melee and ranged mode
+                const magicBtn = document.getElementById('attackBasic');
+                if (magicBtn) {
+                    magicBtn.classList.remove('hidden'); // Always show, never hide
+                }
+                
+                // Combined Attack button - change text based on weapon mode
+                const attackBtn = document.getElementById('attackStrong');
+                if (attackBtn) {
+                    const span = attackBtn.querySelector('span');
+                    if (span) {
+                        span.textContent = isRanged ? 'RANGED' : 'ATTACK';
+                    }
+                }
+            }
+            
+            updateCooldownDisplay() {
+                if (!this.game || !this.game.character) return;
+                
+                // Magic Attack Button - enable/disable based on level 2+ and spell selected
+                const magicBtn = document.getElementById('attackBasic');
+                const magicOverlay = document.getElementById('attackBasicCooldown');
+                const magicText = document.getElementById('attackBasicCooldownText');
+                if (magicBtn && magicOverlay && magicText) {
+                    const level = this.game.xpSystem ? this.game.xpSystem.level : 1;
+                    const hasSpell = this.game.spells && (this.game.spells.fireSplitters || this.game.spells.shield || this.game.spells.spell3);
+                    
+                    if (level >= 2 && hasSpell) {
+                        if (!magicBtn.classList.contains('enabled')) {
+                            magicBtn.classList.add('enabled');
+                            magicBtn.style.pointerEvents = 'auto';
+                            magicBtn.style.filter = 'none';
+                            magicBtn.style.opacity = '1';
+                            console.log('Magic Attack button enabled at level 2!');
+                        }
+                        // Show cooldown
+                        const cooldown = this.game.character.magicAttackCooldown;
+                        if (cooldown > 0) {
+                            magicBtn.classList.add('on-cooldown');
+                            magicOverlay.classList.add('active');
+                            magicText.textContent = cooldown.toFixed(1);
+                        } else {
+                            magicBtn.classList.remove('on-cooldown');
+                            magicOverlay.classList.remove('active');
+                        }
+                    } else {
+                        if (magicBtn.classList.contains('enabled')) {
+                            magicBtn.classList.remove('enabled');
+                        }
+                        magicBtn.style.pointerEvents = 'none';
+                        magicBtn.style.filter = 'grayscale(100%)';
+                        magicBtn.style.opacity = '0.6';
+                        if (level < 2) {
+                            magicText.textContent = 'LVL 2';
+                        } else {
+                            magicText.textContent = 'SELECT';
+                        }
+                    }
+                }
+                
+                // Combined Attack Button (70% basic, 30% strong) - show combined attack cooldown (0.5s)
+                const attackBtn = document.getElementById('attackStrong');
+                const attackOverlay = document.getElementById('attackStrongCooldown');
+                const attackText = document.getElementById('attackStrongCooldownText');
+                if (attackBtn && attackOverlay && attackText) {
+                    // Show combined attack cooldown (0.5 seconds)
+                    const cooldown = this.game.character.combinedAttackCooldown || 0;
+                    if (cooldown > 0) {
+                        attackBtn.classList.add('on-cooldown');
+                        attackOverlay.classList.add('active');
+                        attackText.textContent = cooldown.toFixed(1);
+                    } else {
+                        attackBtn.classList.remove('on-cooldown');
+                        attackOverlay.classList.remove('active');
+                    }
+                }
+                
+                // Dash Button
+                const dashBtn = document.getElementById('attackDash');
+                const dashOverlay = document.getElementById('attackDashCooldown');
+                const dashText = document.getElementById('attackDashCooldownText');
+                if (dashBtn && dashOverlay && dashText) {
+                    if (this.game.character.dashCooldown > 0) {
+                        dashBtn.classList.add('on-cooldown');
+                        dashOverlay.classList.add('active');
+                        dashText.textContent = this.game.character.dashCooldown.toFixed(1);
+                    } else {
+                        dashBtn.classList.remove('on-cooldown');
+                        dashOverlay.classList.remove('active');
+                    }
+                }
+            }
+            
+            performDash() {
+                console.log('performDash called', { game: !!this.game, character: !!(this.game && this.game.character) });
+                if (!this.game || !this.game.character) {
+                    console.warn('Cannot dash: game or character not ready');
+                    return;
+                }
+                
+                // Don't allow dash when dead (can dash while hurt)
+                if (this.game.character.isDead) {
+                    return;
+                }
+                
+                // Store joystick direction for dash if joystick is active
+                if (this.joystickActive && (Math.abs(this.joystickInput.x) > 0.3 || Math.abs(this.joystickInput.y) > 0.3)) {
+                    // Normalize joystick input
+                    const len = Math.sqrt(this.joystickInput.x * this.joystickInput.x + this.joystickInput.y * this.joystickInput.y);
+                    if (len > 0) {
+                        this.game.character.lastMoveDirection.x = this.joystickInput.x / len;
+                        this.game.character.lastMoveDirection.y = this.joystickInput.y / len;
+                    }
+                }
+                
+                console.log('Calling game.performDash()');
+                this.game.performDash();
+            }
+            
+            performRandomAttack() {
+                // Check combined attack cooldown first (0.5 seconds)
+                if (this.game && this.game.character && this.game.character.combinedAttackCooldown > 0) {
+                    return; // Still on cooldown
+                }
+                
+                // Check weapon mode
+                const isRanged = this.game.character.weaponMode === 'ranged';
+                
+                let attackType;
+                if (isRanged) {
+                    // In ranged mode, always use strong attack (creates arrows)
+                    attackType = 'strong';
+                } else {
+                    // In melee mode, 70% chance for basic attack, 30% chance for strong attack
+                    const random = Math.random();
+                    attackType = random < 0.7 ? 'basic' : 'strong';
+                }
+                
+                this.performAttack(attackType, true); // true = from combined attack button
+            }
+            
+            performAttack(attackType, fromCombinedButton = false) {
+                if (!this.game || !this.game.character) return;
+                
+                // Don't allow attacks when dead (can attack while hurt)
+                if (this.game.character.isDead) {
+                    return;
+                }
+                
+                // If from combined button, check combined attack cooldown
+                if (fromCombinedButton && this.game.character.combinedAttackCooldown > 0) {
+                    return;
+                }
+                
+                // Check cooldown based on attack type
+                const isRanged = this.game.character.weaponMode === 'ranged';
+                
+                // Prevent basic attacks in ranged mode (only strong attacks create arrows)
+                if (attackType === 'basic' && isRanged) {
+                    console.warn('Basic attack not allowed in ranged mode, using strong attack instead');
+                    attackType = 'strong'; // Convert to strong attack for ranged mode
+                }
+                
+                if (attackType === 'strong') {
+                    if (isRanged && this.game.character.rangedAttackCooldown > 0) return;
+                    if (!isRanged && this.game.character.strongAttackCooldown > 0) return;
+                } else if (attackType === 'basic') {
+                    // Basic attack has 0.8 second cooldown
+                    if (this.game.character.basicAttackCooldown > 0) return;
+                    if (this.game.character.attackTimer > 0) return;
+                } else if (attackType === 'magic') {
+                    // Check magic attack cooldown
+                    if (this.game.character.magicAttackCooldown > 0) {
+                        console.log('Magic attack on cooldown:', this.game.character.magicAttackCooldown.toFixed(1), 'seconds');
+                        return;
+                    }
+                } else if (attackType === 'magic') {
+                    // Magic attack requires level 2+ and a spell selected
+                    if (!this.game.xpSystem || this.game.xpSystem.level < 2) return;
+                    if (!this.game.spells || (!this.game.spells.fireSplitters && !this.game.spells.shield && !this.game.spells.spell3)) return;
+                    // Check magic attack cooldown
+                    if (this.game.character.magicAttackCooldown > 0) return;
+                }
+                
+                // Set attack type and cooldown based on attack type
+                this.game.character.attackType = attackType;
+                
+                // For ranged attacks, update shoot direction from movement
+                if (this.game.character.weaponMode === 'ranged' && attackType === 'strong') {
+                    let directionSet = false;
+                    
+                    // Use last movement direction or current input for shooting direction
+                    if (this.joystickActive && (Math.abs(this.joystickInput.x) > 0.1 || Math.abs(this.joystickInput.y) > 0.1)) {
+                        const len = Math.sqrt(this.joystickInput.x * this.joystickInput.x + this.joystickInput.y * this.joystickInput.y);
+                        if (len > 0.01) {
+                            this.game.character.shootDirection.x = this.joystickInput.x / len;
+                            this.game.character.shootDirection.y = this.joystickInput.y / len;
+                            directionSet = true;
+                        }
+                    }
+                    
+                    if (!directionSet && (Math.abs(this.game.character.lastMoveDirection.x) > 0.01 || Math.abs(this.game.character.lastMoveDirection.y) > 0.01)) {
+                        // Use last movement direction
+                        const len = Math.sqrt(this.game.character.lastMoveDirection.x * this.game.character.lastMoveDirection.x + 
+                                             this.game.character.lastMoveDirection.y * this.game.character.lastMoveDirection.y);
+                        if (len > 0.01) {
+                            this.game.character.shootDirection.x = this.game.character.lastMoveDirection.x / len;
+                            this.game.character.shootDirection.y = this.game.character.lastMoveDirection.y / len;
+                            directionSet = true;
+                        }
+                    }
+                    
+                    if (!directionSet) {
+                        // Default to facing direction (always ensure a valid direction)
+                        this.game.character.shootDirection.x = this.game.character.facingRight ? 1 : -1;
+                        this.game.character.shootDirection.y = 0;
+                    }
+                    
+                    // Final validation - ensure direction is normalized
+                    const finalLen = Math.sqrt(this.game.character.shootDirection.x * this.game.character.shootDirection.x + 
+                                               this.game.character.shootDirection.y * this.game.character.shootDirection.y);
+                    if (finalLen > 0.01) {
+                        this.game.character.shootDirection.x /= finalLen;
+                        this.game.character.shootDirection.y /= finalLen;
+                    } else {
+                        // Fallback to right direction
+                        this.game.character.shootDirection.x = 1;
+                        this.game.character.shootDirection.y = 0;
+                    }
+                }
+                
+                // For basic and strong attacks, use attack animation duration (6 frames * frame duration)
+                if (attackType === 'basic' || attackType === 'strong') {
+                    // Strong attacks are 15% slower (0.345s vs 0.3s) for better visibility
+                    this.game.character.attackTimer = attackType === 'strong' ? 0.345 : 0.3;
+                    // Reset animation frame for attack animation
+                    this.game.character.currentFrame = 0;
+                    this.game.character.frameTime = 0;
+                    this.game.character.attackType = attackType;
+                    
+                    // Create heavy attack effect for melee strong attacks
+                    if (attackType === 'strong' && !isRanged) {
+                        console.log('✓ Triggering heavy attack effect for strong attack');
+                        this.game.createHeavyAttackEffect();
+                    }
+                } else {
+                    this.game.character.attackTimer = 0.3; // Attack animation duration for other attacks
+                }
+                
+                switch(attackType) {
+                    case 'basic':
+                        this.game.character.basicAttackCooldown = 0.8; // 0.8 second cooldown for basic attack
+                        this.game.character.attackCooldown = 0.8; // Legacy compatibility
+                        // Set combined attack cooldown if from combined button
+                        if (fromCombinedButton) {
+                            this.game.character.combinedAttackCooldown = 0.5; // 0.5 second cooldown
+                        }
+                        console.log('Basic Attack! (from combined attack button)');
+                        break;
+                    case 'strong':
+                        if (this.game.character.weaponMode === 'ranged') {
+                            const rangedCD = this.game.calculateCooldown(1.5); // 1.5 seconds cooldown (affected by abilities)
+                            this.game.character.rangedAttackCooldown = rangedCD;
+                            this.game.character.attackCooldown = rangedCD; // Legacy compatibility
+                            // Set combined attack cooldown if from combined button
+                            if (fromCombinedButton) {
+                                this.game.character.combinedAttackCooldown = 0.5; // 0.5 second cooldown
+                            }
+                            console.log('Ranged Attack! (from combined attack button) Direction:', this.game.character.shootDirection);
+                            // Create arrow projectile
+                            this.game.createArrow();
+                        } else {
+                            const strongCD = this.game.calculateCooldown(1.5); // 1.5 seconds cooldown (affected by abilities)
+                            this.game.character.strongAttackCooldown = strongCD;
+                            this.game.character.attackCooldown = strongCD; // Legacy compatibility
+                            // Set combined attack cooldown if from combined button
+                            if (fromCombinedButton) {
+                                this.game.character.combinedAttackCooldown = 0.5; // 0.5 second cooldown
+                            }
+                            console.log('Strong Attack! (from combined attack button)');
+                        }
+                        break;
+                    case 'magic':
+                        // Magic attack - Fire Splitters or Shield spells
+                        if (this.game.spells.fireSplitters) {
+                            // Set shoot direction for magic attack (use facing direction or movement)
+                            if (this.joystickActive && (Math.abs(this.joystickInput.x) > 0.1 || Math.abs(this.joystickInput.y) > 0.1)) {
+                                const len = Math.sqrt(this.joystickInput.x * this.joystickInput.x + this.joystickInput.y * this.joystickInput.y);
+                                if (len > 0.01) {
+                                    this.game.character.shootDirection.x = this.joystickInput.x / len;
+                                    this.game.character.shootDirection.y = this.joystickInput.y / len;
+                                }
+                            } else if (this.game.character.lastMoveDirection.x !== 0 || this.game.character.lastMoveDirection.y !== 0) {
+                                const len = Math.sqrt(this.game.character.lastMoveDirection.x * this.game.character.lastMoveDirection.x + 
+                                                     this.game.character.lastMoveDirection.y * this.game.character.lastMoveDirection.y);
+                                if (len > 0.01) {
+                                    this.game.character.shootDirection.x = this.game.character.lastMoveDirection.x / len;
+                                    this.game.character.shootDirection.y = this.game.character.lastMoveDirection.y / len;
+                                }
+                            } else {
+                                this.game.character.shootDirection.x = this.game.character.facingRight ? 1 : -1;
+                                this.game.character.shootDirection.y = 0;
+                            }
+                            
+                            // Create Fire Splitters projectiles
+                            this.game.createFireSplitters();
+                            
+                            // Set cooldown (10 seconds, affected by abilities)
+                            const magicCD = this.game.calculateCooldown(10.0);
+                            this.game.character.magicAttackCooldown = magicCD;
+                            this.game.character.attackTimer = 0.3; // Short animation duration
+                            this.game.character.currentFrame = 0;
+                            this.game.character.frameTime = 0;
+                            
+                            console.log('Fire Splitters cast! Cooldown:', magicCD);
+                        } else if (this.game.spells.shield) {
+                            // Cast Shield
+                            this.game.createShield();
+                            
+                            // Set cooldown (30 seconds, affected by abilities)
+                            const magicCD = this.game.calculateCooldown(30.0);
+                            this.game.character.magicAttackCooldown = magicCD;
+                            this.game.character.attackTimer = 0.3; // Short animation duration
+                            this.game.character.currentFrame = 0;
+                            this.game.character.frameTime = 0;
+                            
+                            console.log('Shield cast! Cooldown:', magicCD);
+                        } else {
+                            // Future spells will be handled here
+                            console.log('Magic Attack! (No spell selected)');
+                        }
+                        break;
+                }
+            }
+            
+            setupJoystick() {
+                const container = this.joystickContainer;
+                const handle = this.joystickHandle;
+                
+                // Get joystick center position
+                const updateCenter = () => {
+                    const rect = container.getBoundingClientRect();
+                    this.joystickCenter.x = rect.left + rect.width / 2;
+                    this.joystickCenter.y = rect.top + rect.height / 2;
+                    this.joystickRadius = rect.width / 2 - 25; // Leave space for handle
+                };
+                updateCenter();
+                window.addEventListener('resize', updateCenter);
+                
+                // Touch/Mouse events
+                const startJoystick = (e) => {
+                    e.preventDefault();
+                    this.joystickActive = true;
+                    const touch = e.touches ? e.touches[0] : e;
+                    this.updateJoystick(touch.clientX, touch.clientY);
+                };
+                
+                const moveJoystick = (e) => {
+                    if (!this.joystickActive) return;
+                    e.preventDefault();
+                    const touch = e.touches ? e.touches[0] : e;
+                    this.updateJoystick(touch.clientX, touch.clientY);
+                };
+                
+                const endJoystick = (e) => {
+                    e.preventDefault();
+                    this.joystickActive = false;
+                    this.joystickPosition = { x: 0, y: 0 };
+                    this.joystickInput = { x: 0, y: 0 };
+                    handle.style.transform = 'translate(-50%, -50%)';
+                };
+                
+                // Mouse events
+                container.addEventListener('mousedown', startJoystick);
+                document.addEventListener('mousemove', moveJoystick);
+                document.addEventListener('mouseup', endJoystick);
+                
+                // Touch events
+                container.addEventListener('touchstart', startJoystick);
+                document.addEventListener('touchmove', moveJoystick);
+                document.addEventListener('touchend', endJoystick);
+                document.addEventListener('touchcancel', endJoystick);
+            }
+            
+            updateJoystick(clientX, clientY) {
+                const dx = clientX - this.joystickCenter.x;
+                const dy = clientY - this.joystickCenter.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > this.joystickRadius) {
+                    // Clamp to circle
+                    const angle = Math.atan2(dy, dx);
+                    this.joystickPosition.x = Math.cos(angle) * this.joystickRadius;
+                    this.joystickPosition.y = Math.sin(angle) * this.joystickRadius;
+                } else {
+                    this.joystickPosition.x = dx;
+                    this.joystickPosition.y = dy;
+                }
+                
+                // Normalize input (-1 to 1)
+                this.joystickInput.x = this.joystickPosition.x / this.joystickRadius;
+                this.joystickInput.y = this.joystickPosition.y / this.joystickRadius;
+                
+                // Update handle visual position
+                this.joystickHandle.style.transform = 
+                    `translate(calc(-50% + ${this.joystickPosition.x}px), calc(-50% + ${this.joystickPosition.y}px))`;
+            }
+            
+            setupGame() {
+                // Create game engine
+                this.game = new GameEngine(this.canvas);
+                
+                // Add camera zoom (zoom out 15% = scale 0.85 to show more area)
+                this.game.cameraZoom = 0.85;
+                
+                // Calculate map bounds from ALL chunks - simple and reliable approach
+                this.game.mapBounds = null;
+                this.game.calculateMapBounds = () => {
+                    if (!this.game.mapLoader.mapData) return;
+                    
+                    const mapData = this.game.mapLoader.mapData;
+                    const tileSize = this.game.tileSize;
+                    let minX = Infinity, minY = Infinity;
+                    let maxX = -Infinity, maxY = -Infinity;
+                    let chunkCount = 0;
+                    
+                    // Find bounds from ACTUAL TILE POSITIONS (not chunk boundaries)
+                    for (const layer of mapData.layers) {
+                        if (layer.type === 'tilelayer' && layer.visible !== false) {
+                            // Check chunks (infinite maps)
+                            if (layer.chunks && layer.chunks.length > 0) {
+                                for (const chunk of layer.chunks) {
+                                    if (chunk.data) {
+                                        const chunkX = chunk.x * tileSize;
+                                        const chunkY = chunk.y * tileSize;
+                                        const chunkWidth = chunk.width || 16;
+                                        const chunkHeight = chunk.height || 16;
+                                        
+                                        // Check each tile in the chunk
+                                        for (let i = 0; i < chunk.data.length; i++) {
+                                            const gid = chunk.data[i];
+                                            if (gid !== 0) {
+                                                chunkCount++;
+                                                const tileX = chunkX + (i % chunkWidth) * tileSize;
+                                                const tileY = chunkY + Math.floor(i / chunkWidth) * tileSize;
+                                                
+                                                // Use actual tile position, not chunk boundary
+                                                minX = Math.min(minX, tileX);
+                                                minY = Math.min(minY, tileY);
+                                                maxX = Math.max(maxX, tileX + tileSize);
+                                                maxY = Math.max(maxY, tileY + tileSize);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // Check regular tile data (non-infinite maps)
+                            else if (layer.data && layer.data.length > 0) {
+                                const width = layer.width || mapData.width || 0;
+                                const height = layer.height || mapData.height || 0;
+                                
+                                // Check if layer has any non-zero tiles
+                                let hasContent = false;
+                                for (let i = 0; i < layer.data.length; i++) {
+                                    if (layer.data[i] !== 0) {
+                                        hasContent = true;
+                                        break;
+                                    }
+                                }
+                                
+                                if (hasContent && width > 0 && height > 0) {
+                                    chunkCount++;
+                                    const layerWidth = width * tileSize;
+                                    const layerHeight = height * tileSize;
+                                    
+                                    minX = Math.min(minX, 0);
+                                    minY = Math.min(minY, 0);
+                                    maxX = Math.max(maxX, layerWidth);
+                                    maxY = Math.max(maxY, layerHeight);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Also check object layers for visual objects (sprites, etc.)
+                    for (const layer of mapData.layers) {
+                        if (layer.type === 'objectgroup' && layer.objects) {
+                            for (const obj of layer.objects) {
+                                // Skip spawn points
+                                const layerName = (layer.name || '').toLowerCase();
+                                if (layerName.includes('spawn')) continue;
+                                if (obj.name && obj.name.toLowerCase().includes('spawn')) continue;
+                                
+                                // Include any visual object (has gid or dimensions)
+                                if (obj.gid || (obj.width > 0 && obj.height > 0)) {
+                                    const objX = obj.x || 0;
+                                    const objY = obj.y || 0;
+                                    let objW = obj.width || 0;
+                                    let objH = obj.height || 0;
+                                    
+                                    if (obj.gid) {
+                                        const tilesetInfo = this.game.mapLoader.getTilesetForTile(obj.gid);
+                                        if (tilesetInfo && tilesetInfo.tileset) {
+                                            if (!objW) objW = tilesetInfo.tileset.tilewidth || 64;
+                                            if (!objH) objH = tilesetInfo.tileset.tileheight || 64;
+                                        }
+                                        // Tiled places tile object y at bottom, adjust to top
+                                        const actualY = objY - objH;
+                                        
+                                        minX = Math.min(minX, objX);
+                                        minY = Math.min(minY, actualY);
+                                        maxX = Math.max(maxX, objX + objW);
+                                        maxY = Math.max(maxY, actualY + objH);
+                                    } else if (objW > 0 && objH > 0) {
+                                        minX = Math.min(minX, objX);
+                                        minY = Math.min(minY, objY);
+                                        maxX = Math.max(maxX, objX + objW);
+                                        maxY = Math.max(maxY, objY + objH);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Fallback: If no chunks found, use collision objects bounds
+                    if (minX === Infinity && this.game.collisionObjects && this.game.collisionObjects.length > 0) {
+                        console.log('⚠ No chunks found, using collision objects for bounds...');
+                        for (const obj of this.game.collisionObjects) {
+                            if (obj.x !== undefined && obj.y !== undefined) {
+                                const objX = obj.x;
+                                const objY = obj.y;
+                                const objW = obj.width || 64;
+                                const objH = obj.height || 64;
+                                
+                                minX = Math.min(minX, objX);
+                                minY = Math.min(minY, objY);
+                                maxX = Math.max(maxX, objX + objW);
+                                maxY = Math.max(maxY, objY + objH);
+                            }
+                        }
+                    }
+                    
+                    if (minX !== Infinity) {
+                        this.game.mapBounds = { minX, minY, maxX, maxY };
+                        console.log(`✓ Map bounds calculated from ${chunkCount} chunks:`, this.game.mapBounds);
+                    } else {
+                        console.warn('⚠ No map content found! Camera will not be clamped.');
+                        // Last resort: use a very large area around spawn point
+                        if (this.game.spawnPoint) {
+                            const margin = 5000; // 5000 pixels margin
+                            this.game.mapBounds = {
+                                minX: this.game.spawnPoint.x - margin,
+                                minY: this.game.spawnPoint.y - margin,
+                                maxX: this.game.spawnPoint.x + (this.game.spawnPoint.width || 100) + margin,
+                                maxY: this.game.spawnPoint.y + (this.game.spawnPoint.height || 100) + margin
+                            };
+                            console.log('⚠ Using fallback bounds around spawn point:', this.game.mapBounds);
+                        }
+                    }
+                };
+                
+                // Override render to apply zoom, fix background, and render large area (pre-render)
+                const originalDrawTile = this.game.drawTile.bind(this.game);
+                this.game.render = () => {
+                    // Clear canvas first with background color (before zoom)
+                    this.game.ctx.fillStyle = '#87CEEB'; // Sky blue background
+                    this.game.ctx.fillRect(0, 0, this.game.canvas.width, this.game.canvas.height);
+                    
+                    this.game.ctx.save();
+                    // Apply zoom by scaling (zoom out = smaller scale = see more)
+                    const zoom = this.game.cameraZoom || 1.0;
+                    const centerX = this.game.canvas.width / 2;
+                    const centerY = this.game.canvas.height / 2;
+                    
+                    // Translate to center, scale, translate back
+                    this.game.ctx.translate(centerX, centerY);
+                    this.game.ctx.scale(zoom, zoom);
+                    this.game.ctx.translate(-centerX, -centerY);
+                    
+                    // Render map with large pre-render area (no tight viewport culling)
+                    const mapData = this.game.mapLoader.mapData;
+                    if (mapData) {
+                        const tileSize = this.game.tileSize;
+                        const viewWidth = this.game.canvas.width / zoom;
+                        const viewHeight = this.game.canvas.height / zoom;
+                        
+                        // Render area much larger than viewport (5x viewport for pre-rendering)
+                        const renderMargin = Math.max(viewWidth, viewHeight) * 2.5;
+                        
+                        // Render layers in order, but split for character layer 2
+                        let layerIndex = 0;
+                        const treesLayerName = 'Trees Layer';
+                        let treesLayerFound = false;
+                        
+                        // First pass: Render layers before trees (layers 0-1)
+                        for (const layer of mapData.layers) {
+                            if (layer.type === 'tilelayer' && layer.visible !== false) {
+                                const layerName = (layer.name || '').toLowerCase();
+                                
+                                // Stop before trees layer
+                                if (layer.name === treesLayerName) {
+                                    treesLayerFound = true;
+                                    break;
+                                }
+                                
+                                if (layer.chunks) {
+                                    for (const chunk of layer.chunks) {
+                                        const chunkX = chunk.x * tileSize;
+                                        const chunkY = chunk.y * tileSize;
+
+                                        for (let i = 0; i < chunk.data.length; i++) {
+                                            const gid = chunk.data[i];
+                                            if (gid !== 0) {
+                                                const x = (i % chunk.width) * tileSize + chunkX - this.game.camera.x;
+                                                const y = Math.floor(i / chunk.width) * tileSize + chunkY - this.game.camera.y;
+
+                                                if (x > -renderMargin && x < this.game.canvas.width + renderMargin &&
+                                                    y > -renderMargin && y < this.game.canvas.height + renderMargin) {
+                                                    this.game.drawTile(gid, x, y);
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else if (layer.data) {
+                                    const width = layer.width || mapData.width;
+                                    for (let i = 0; i < layer.data.length; i++) {
+                                        const gid = layer.data[i];
+                                        if (gid !== 0) {
+                                            const x = (i % width) * tileSize - this.game.camera.x;
+                                            const y = Math.floor(i / width) * tileSize - this.game.camera.y;
+
+                                            if (x > -renderMargin && x < this.game.canvas.width + renderMargin &&
+                                                y > -renderMargin && y < this.game.canvas.height + renderMargin) {
+                                                this.game.drawTile(gid, x, y);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            layerIndex++;
+                        }
+                        
+                        // Second pass: Render trees and layers after (with transparency for trees behind character)
+                        for (const layer of mapData.layers) {
+                            if (layer.type === 'tilelayer' && layer.visible !== false) {
+                                const isTreesLayer = layer.name === treesLayerName;
+                                
+                                // Skip layers we already rendered
+                                if (!treesLayerFound || layer.name !== treesLayerName) {
+                                    // Only render trees layer and layers after it
+                                    if (!isTreesLayer && treesLayerFound) {
+                                        // Render normally
+                                        if (layer.chunks) {
+                                            for (const chunk of layer.chunks) {
+                                                const chunkX = chunk.x * tileSize;
+                                                const chunkY = chunk.y * tileSize;
+
+                                                for (let i = 0; i < chunk.data.length; i++) {
+                                                    const gid = chunk.data[i];
+                                                    if (gid !== 0) {
+                                                        const x = (i % chunk.width) * tileSize + chunkX - this.game.camera.x;
+                                                        const y = Math.floor(i / chunk.width) * tileSize + chunkY - this.game.camera.y;
+
+                                                        if (x > -renderMargin && x < this.game.canvas.width + renderMargin &&
+                                                            y > -renderMargin && y < this.game.canvas.height + renderMargin) {
+                                                            this.game.drawTile(gid, x, y);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } else if (layer.data) {
+                                            const width = layer.width || mapData.width;
+                                            for (let i = 0; i < layer.data.length; i++) {
+                                                const gid = layer.data[i];
+                                                if (gid !== 0) {
+                                                    const x = (i % width) * tileSize - this.game.camera.x;
+                                                    const y = Math.floor(i / width) * tileSize - this.game.camera.y;
+
+                                                    if (x > -renderMargin && x < this.game.canvas.width + renderMargin &&
+                                                        y > -renderMargin && y < this.game.canvas.height + renderMargin) {
+                                                        this.game.drawTile(gid, x, y);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        continue;
+                                    }
+                                }
+                                
+                                // Render trees layer with transparency check
+                                if (isTreesLayer) {
+                                    if (layer.chunks) {
+                                        for (const chunk of layer.chunks) {
+                                            const chunkX = chunk.x * tileSize;
+                                            const chunkY = chunk.y * tileSize;
+
+                                            for (let i = 0; i < chunk.data.length; i++) {
+                                                const gid = chunk.data[i];
+                                                if (gid !== 0) {
+                                                    const tileX = (i % chunk.width) * tileSize + chunkX;
+                                                    const tileY = Math.floor(i / chunk.width) * tileSize + chunkY;
+                                                    const x = tileX - this.game.camera.x;
+                                                    const y = tileY - this.game.camera.y;
+
+                                                    if (x > -renderMargin && x < this.game.canvas.width + renderMargin &&
+                                                        y > -renderMargin && y < this.game.canvas.height + renderMargin) {
+                                                        // Check if tree is within a triangle area southward of the character
+                                                        const charTop = this.game.character.y;
+                                                        const charBottom = this.game.character.y + this.game.character.height;
+                                                        const charLeft = this.game.character.x;
+                                                        const charRight = this.game.character.x + this.game.character.width;
+                                                        const charCenterX = this.game.character.x + this.game.character.width / 2;
+                                                        
+                                                        const treeTop = tileY;
+                                                        const treeBottom = tileY + tileSize;
+                                                        const treeLeft = tileX;
+                                                        const treeRight = tileX + tileSize;
+                                                        const treeCenterX = tileX + tileSize / 2;
+                                                        const treeCenterY = tileY + tileSize / 2;
+                                                        
+                                                        // Create a triangle southward of character
+                                                        // Triangle points:
+                                                        // Top: character's bottom center
+                                                        // Bottom-left: character's left, extended south
+                                                        // Bottom-right: character's right, extended south
+                                                        const triangleTopX = charCenterX;
+                                                        const triangleTopY = charBottom;
+                                                        const triangleBottomY = charBottom + 187; // 45% less long: 340 * 0.55 = 187 pixels
+                                                        const triangleLeftX = charLeft - 319; // 30% wider: 245 * 1.3 = 319 pixels
+                                                        const triangleRightX = charRight + 319;
+                                                        
+                                                        // Check if ANY part of the tree overlaps with the triangle
+                                                        // Check tree corners and center point
+                                                        const isInTriangle = (px, py, x1, y1, x2, y2, x3, y3) => {
+                                                            const denom = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
+                                                            if (Math.abs(denom) < 0.001) return false; // Avoid division by zero
+                                                            const a = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / denom;
+                                                            const b = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / denom;
+                                                            const c = 1 - a - b;
+                                                            return a >= 0 && b >= 0 && c >= 0;
+                                                        };
+                                                        
+                                                        // Check multiple points of the tree: corners and center
+                                                        const treePoints = [
+                                                            { x: treeLeft, y: treeTop },           // Top-left corner
+                                                            { x: treeRight, y: treeTop },          // Top-right corner
+                                                            { x: treeLeft, y: treeBottom },        // Bottom-left corner
+                                                            { x: treeRight, y: treeBottom },       // Bottom-right corner
+                                                            { x: treeCenterX, y: treeCenterY }     // Center point
+                                                        ];
+                                                        
+                                                        let treeOverlapsTriangle = false;
+                                                        for (const point of treePoints) {
+                                                            if (isInTriangle(
+                                                                point.x, point.y,
+                                                                triangleTopX, triangleTopY,      // Top point
+                                                                triangleLeftX, triangleBottomY, // Bottom-left
+                                                                triangleRightX, triangleBottomY  // Bottom-right
+                                                            )) {
+                                                                treeOverlapsTriangle = true;
+                                                                break;
+                                                            }
+                                                        }
+                                                        
+                                                        // Make tree transparent if ANY part overlaps the triangle
+                                                        if (treeOverlapsTriangle && treeTop > charTop) {
+                                                            this.game.ctx.globalAlpha = 0.4; // 40% opacity
+                                                        } else {
+                                                            this.game.ctx.globalAlpha = 1.0;
+                                                        }
+                                                        
+                                                        this.game.drawTile(gid, x, y);
+                                                        this.game.ctx.globalAlpha = 1.0; // Reset
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else if (layer.data) {
+                                        const width = layer.width || mapData.width;
+                                        for (let i = 0; i < layer.data.length; i++) {
+                                            const gid = layer.data[i];
+                                            if (gid !== 0) {
+                                                const tileX = (i % width) * tileSize;
+                                                const tileY = Math.floor(i / width) * tileSize;
+                                                const x = tileX - this.game.camera.x;
+                                                const y = tileY - this.game.camera.y;
+
+                                                if (x > -renderMargin && x < this.game.canvas.width + renderMargin &&
+                                                    y > -renderMargin && y < this.game.canvas.height + renderMargin) {
+                                                    // Check if tree is within a triangle area southward of the character
+                                                    const charTop = this.game.character.y;
+                                                    const charBottom = this.game.character.y + this.game.character.height;
+                                                    const charLeft = this.game.character.x;
+                                                    const charRight = this.game.character.x + this.game.character.width;
+                                                    const charCenterX = this.game.character.x + this.game.character.width / 2;
+                                                    
+                                                    const treeTop = tileY;
+                                                    const treeBottom = tileY + tileSize;
+                                                    const treeLeft = tileX;
+                                                    const treeRight = tileX + tileSize;
+                                                    const treeCenterX = tileX + tileSize / 2;
+                                                    const treeCenterY = tileY + tileSize / 2;
+                                                    
+                                                    // Create a triangle southward of character
+                                                    const triangleTopX = charCenterX;
+                                                    const triangleTopY = charBottom;
+                                                    const triangleBottomY = charBottom + 187; // 45% less long: 340 * 0.55 = 187 pixels
+                                                    const triangleLeftX = charLeft - 319; // 30% wider: 245 * 1.3 = 319 pixels
+                                                    const triangleRightX = charRight + 319;
+                                                    
+                                                    // Check if ANY part of the tree overlaps with the triangle
+                                                    const isInTriangle = (px, py, x1, y1, x2, y2, x3, y3) => {
+                                                        const denom = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
+                                                        if (Math.abs(denom) < 0.001) return false; // Avoid division by zero
+                                                        const a = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / denom;
+                                                        const b = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / denom;
+                                                        const c = 1 - a - b;
+                                                        return a >= 0 && b >= 0 && c >= 0;
+                                                    };
+                                                    
+                                                    // Check multiple points of the tree: corners and center
+                                                    const treePoints = [
+                                                        { x: treeLeft, y: treeTop },           // Top-left corner
+                                                        { x: treeRight, y: treeTop },          // Top-right corner
+                                                        { x: treeLeft, y: treeBottom },        // Bottom-left corner
+                                                        { x: treeRight, y: treeBottom },       // Bottom-right corner
+                                                        { x: treeCenterX, y: treeCenterY }     // Center point
+                                                    ];
+                                                    
+                                                    let treeOverlapsTriangle = false;
+                                                    for (const point of treePoints) {
+                                                        if (isInTriangle(
+                                                            point.x, point.y,
+                                                            triangleTopX, triangleTopY,      // Top point
+                                                            triangleLeftX, triangleBottomY, // Bottom-left
+                                                            triangleRightX, triangleBottomY  // Bottom-right
+                                                        )) {
+                                                            treeOverlapsTriangle = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                    
+                                                    // Make tree transparent if ANY part overlaps the triangle
+                                                    if (treeOverlapsTriangle && treeTop > charTop) {
+                                                        this.game.ctx.globalAlpha = 0.4;
+                                                    } else {
+                                                        this.game.ctx.globalAlpha = 1.0;
+                                                    }
+                                                    
+                                                    this.game.drawTile(gid, x, y);
+                                                    this.game.ctx.globalAlpha = 1.0;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Spawn point visualization removed (was the green box)
+                        
+                        // Draw collision boxes (for debugging - can be toggled with 'b' or 'c')
+                        if (this.game.keys['b'] || this.game.keys['c']) {
+                            // Draw character collision box (50% smaller from top, 10% smaller from front, green, thicker)
+                            const charX = this.game.character.x - this.game.camera.x;
+                            const charY = this.game.character.y - this.game.camera.y;
+                            const collisionHeight = this.game.character.height * 0.5; // 50% of original height
+                            const topOffset = this.game.character.height * 0.5; // 50% offset from top
+                            const collisionWidth = this.game.character.width * 0.9; // 90% of original width
+                            let collisionX = charX;
+                            if (this.game.character.facingRight) {
+                                // Facing right: remove 10% from right side
+                                collisionX = charX;
+                            } else {
+                                // Facing left: remove 10% from left side
+                                collisionX = charX + (this.game.character.width * 0.1);
+                            }
+                            this.game.ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+                            this.game.ctx.lineWidth = 2;
+                            this.game.ctx.strokeRect(collisionX, charY + topOffset, collisionWidth, collisionHeight);
+                            
+                            // Draw other collision objects (red)
+                            this.game.ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                            this.game.ctx.lineWidth = 1;
+                            for (const obj of this.game.collisionObjects) {
+                                if (obj.polygon && Array.isArray(obj.polygon)) {
+                                    this.game.ctx.beginPath();
+                                    for (let i = 0; i < obj.polygon.length; i++) {
+                                        const p = obj.polygon[i];
+                                        const px = p.x - this.game.camera.x;
+                                        const py = p.y - this.game.camera.y;
+                                        if (i === 0) this.game.ctx.moveTo(px, py);
+                                        else this.game.ctx.lineTo(px, py);
+                                    }
+                                    this.game.ctx.closePath();
+                                    this.game.ctx.stroke();
+                                } else {
+                                    const x = obj.x - this.game.camera.x;
+                                    const y = obj.y - this.game.camera.y;
+                                    this.game.ctx.strokeRect(x, y, obj.width, obj.height);
+                                }
+                            }
+                        }
+                        
+                        // Draw enemies
+                        if (this.game.enemies && this.game.enemies.length > 0) {
+                            for (const enemy of this.game.enemies) {
+                                const enemyX = enemy.x - this.game.camera.x + (this.game.cameraShake ? this.game.cameraShake.x : 0);
+                                const enemyY = enemy.y - this.game.camera.y + (this.game.cameraShake ? this.game.cameraShake.y : 0);
+                                
+                                // Only draw if in view (with larger margin)
+                                if (enemyX > -enemy.width * 2 && enemyX < this.game.canvas.width + enemy.width * 2 &&
+                                    enemyY > -enemy.height * 2 && enemyY < this.game.canvas.height + enemy.height * 2) {
+                                    
+                                    // Draw enemy sprite
+                                    let sprite = null;
+                                    let frameCount = 0;
+                                    let currentFrame = enemy.currentFrame;
+                                    let frameWidth = 74;
+                                    let frameHeight = 41;
+                                    
+                                    // Check for Blue Golem death FIRST - highest priority (before general character death)
+                                    if (enemy.type === 'blueGolem' && enemy.isDead && enemy.state === 'dying' && this.game.blueGolemSpritesLoaded) {
+                                        if (this.game.blueGolemDieSprite) {
+                                            sprite = this.game.blueGolemDieSprite;
+                                            frameWidth = 90;
+                                            frameHeight = 64;
+                                            frameCount = enemy.dieFrames;
+                                        } else {
+                                            console.warn('Blue Golem die sprite not loaded!');
+                                        }
+                                    }
+                                    // Check if enemy is dead - use character death animation (last 4 frames) - for non-Blue Golem enemies
+                                    else if (enemy.isDead && enemy.state === 'dying' && this.game.character.deathSpriteLoaded) {
+                                        sprite = this.game.character.deathSpriteImage;
+                                        frameWidth = this.game.character.spriteFrameWidth || 42;
+                                        frameHeight = this.game.character.spriteFrameHeight || 42;
+                                        frameCount = 8; // Character death has 8 frames, we use last 4 (4-7)
+                                        // currentFrame is already set to 4-7 range in updateEnemies
+                                    } else if (enemy.type === 'yellowKnight' && this.game.yellowKnightSpritesLoaded) {
+                                        // Yellow Knight sprites (192x192 per frame, scaled to 100x100)
+                                        frameWidth = 192;
+                                        frameHeight = 192;
+                                        
+                                        if (enemy.state === 'blocking' && this.game.yellowKnightBlockSprite) {
+                                            sprite = this.game.yellowKnightBlockSprite;
+                                            frameCount = enemy.blockFrames;
+                                        } else if (enemy.state === 'attacking' && this.game.yellowKnightAttackSprite) {
+                                            sprite = this.game.yellowKnightAttackSprite;
+                                            frameCount = enemy.attackFrames;
+                                        } else if ((enemy.state === 'moving' || enemy.state === 'walking') && this.game.yellowKnightMoveSprite) {
+                                            sprite = this.game.yellowKnightMoveSprite;
+                                            frameCount = enemy.moveFrames;
+                                        } else if (this.game.yellowKnightIdleSprite) {
+                                            sprite = this.game.yellowKnightIdleSprite;
+                                            frameCount = enemy.idleFrames;
+                                        }
+                                    } else if (enemy.type === 'yellowArcher' && this.game.yellowArcherSpritesLoaded) {
+                                        // Yellow Archer sprites (192x192 per frame, scaled to 140x140 like yellow knight)
+                                        frameWidth = 192;
+                                        frameHeight = 192;
+                                        
+                                        if (enemy.state === 'shooting' && this.game.yellowArcherShootSprite) {
+                                            sprite = this.game.yellowArcherShootSprite;
+                                            frameCount = enemy.shootFrames;
+                                        } else if (enemy.state === 'moving' && this.game.yellowArcherRunSprite) {
+                                            sprite = this.game.yellowArcherRunSprite;
+                                            frameCount = enemy.runFrames;
+                                        } else if (this.game.yellowArcherIdleSprite) {
+                                            sprite = this.game.yellowArcherIdleSprite;
+                                            frameCount = enemy.idleFrames;
+                                        }
+                                    } else if (enemy.type === 'blueGolem' && this.game.blueGolemSpritesLoaded) {
+                                        // Blue Golem Boss sprites (90x64 per frame, scaled to 176x126 - 196% of original)
+                                        frameWidth = 90;
+                                        frameHeight = 64;
+                                        
+                                        // Death state is already handled above, so skip it here
+                                        if (enemy.isHurt && enemy.hurtTimer > 0 && this.game.blueGolemHurtSprite) {
+                                            sprite = this.game.blueGolemHurtSprite;
+                                            frameCount = enemy.hurtFrames;
+                                        } else if (enemy.state === 'attacking' && this.game.blueGolemAttackSprite) {
+                                            sprite = this.game.blueGolemAttackSprite;
+                                            frameCount = enemy.attackFrames;
+                                        } else if (enemy.state === 'walking' && this.game.blueGolemWalkSprite) {
+                                            sprite = this.game.blueGolemWalkSprite;
+                                            frameCount = enemy.walkFrames;
+                                        } else if (this.game.blueGolemIdleSprite) {
+                                            sprite = this.game.blueGolemIdleSprite;
+                                            frameCount = enemy.idleFrames;
+                                        }
+                                    } else if (enemy.type === 'archer' && this.game.enemySpritesLoaded) {
+                                        // Archer sprites
+                                        frameWidth = 74;
+                                        frameHeight = 41;
+                                        
+                                        if (enemy.state === 'attacking' && this.game.enemyAttackSprite) {
+                                            sprite = this.game.enemyAttackSprite;
+                                            frameCount = enemy.attackFrames;
+                                        } else if (enemy.state === 'moving' && this.game.enemyMoveSprite) {
+                                            sprite = this.game.enemyMoveSprite;
+                                            frameCount = enemy.moveFrames;
+                                        } else if (this.game.enemyIdleSprite) {
+                                            sprite = this.game.enemyIdleSprite;
+                                            frameCount = enemy.idleFrames;
+                                        }
+                                    } else if (enemy.type === 'orcBarbarian' && this.game.orcBarbarianSpritesLoaded) {
+                                        // Orc Barbarian sprites (57x58 per frame for move, 58x57 for attack)
+                                        if (enemy.state === 'attacking' && this.game.orcBarbarianAttackSprite) {
+                                            sprite = this.game.orcBarbarianAttackSprite;
+                                            frameWidth = 58;
+                                            frameHeight = 57;
+                                            frameCount = enemy.attackFrames;
+                                        } else if (enemy.state === 'moving' && this.game.orcBarbarianMoveSprite) {
+                                            sprite = this.game.orcBarbarianMoveSprite;
+                                            frameWidth = 57;
+                                            frameHeight = 58;
+                                            frameCount = enemy.moveFrames;
+                                        } else if (this.game.orcBarbarianMoveSprite) {
+                                            // Use move sprite for idle (no separate idle sprite)
+                                            sprite = this.game.orcBarbarianMoveSprite;
+                                            frameWidth = 57;
+                                            frameHeight = 58;
+                                            frameCount = enemy.idleFrames;
+                                        }
+                                    }
+                                    
+                                    if (sprite) {
+                                        // Clamp currentFrame to valid range
+                                        if (currentFrame >= frameCount) {
+                                            currentFrame = frameCount - 1;
+                                        }
+                                        if (currentFrame < 0) {
+                                            currentFrame = 0;
+                                        }
+                                        
+                                        const sourceX = currentFrame * frameWidth;
+                                        const sourceY = 0;
+                                        
+                                        this.game.ctx.save();
+                                        
+                                        // Flip sprite if facing left
+                                        if (!enemy.facingRight) {
+                                            this.game.ctx.translate(enemyX + enemy.width, enemyY);
+                                            this.game.ctx.scale(-1, 1);
+                                            this.game.ctx.drawImage(
+                                                sprite,
+                                                sourceX, sourceY, frameWidth, frameHeight,
+                                                0, 0, enemy.width, enemy.height
+                                            );
+                                        } else {
+                                            this.game.ctx.drawImage(
+                                                sprite,
+                                                sourceX, sourceY, frameWidth, frameHeight,
+                                                enemyX, enemyY, enemy.width, enemy.height
+                                            );
+                                        }
+                                        
+                                        this.game.ctx.restore();
+                                    } else {
+                                        // Fallback: draw colored rectangle
+                                        this.game.ctx.fillStyle = enemy.color || '#ff00ff';
+                                        this.game.ctx.fillRect(enemyX, enemyY, enemy.width, enemy.height);
+                                    }
+                                    
+                                    // Draw health bar above enemy (sized to match sprite visual width) - only if not dead
+                                    if (!enemy.isDead && enemy.health !== undefined && enemy.maxHealth !== undefined) {
+                                        // Health bar should match the actual sprite frame width (74 pixels scaled proportionally)
+                                        // Enemy width is 151, sprite frame is 74, so scale factor is ~0.49
+                                        const barWidth = 74 * (enemy.width / 151) * 0.9; // Match sprite frame, slightly smaller
+                                        const barHeight = 4;
+                                        const barX = enemyX + (enemy.width - barWidth) / 2; // Centered
+                                        const barY = enemyY - 8; // 8 pixels above enemy
+                                        
+                                        // Background (dark red)
+                                        this.game.ctx.fillStyle = 'rgba(100, 0, 0, 0.9)';
+                                        this.game.ctx.fillRect(barX, barY, barWidth, barHeight);
+                                        
+                                        // Health (green)
+                                        const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
+                                        this.game.ctx.fillStyle = 'rgba(0, 200, 0, 0.9)';
+                                        this.game.ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+                                        
+                                        // Border
+                                        this.game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+                                        this.game.ctx.lineWidth = 1;
+                                        this.game.ctx.strokeRect(barX, barY, barWidth, barHeight);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Draw Boss Quest NPC (Monk) first
+                        if (this.game.bossQuestNPC && this.game.questNPCSpritesLoaded && this.game.questNPCIdleSprite) {
+                            const npcX = this.game.bossQuestNPC.x - this.game.camera.x + (this.game.cameraShake ? this.game.cameraShake.x : 0);
+                            const npcY = this.game.bossQuestNPC.y - this.game.camera.y + (this.game.cameraShake ? this.game.cameraShake.y : 0);
+                            
+                            // Only draw if in view
+                            if (npcX > -this.game.bossQuestNPC.width * 2 && npcX < this.game.canvas.width + this.game.bossQuestNPC.width * 2 &&
+                                npcY > -this.game.bossQuestNPC.height * 2 && npcY < this.game.canvas.height + this.game.bossQuestNPC.height * 2) {
+                                
+                                // Draw Boss Quest NPC sprite (6 frames, 192x192 each, scaled to 130x130)
+                                const frameWidth = 192;
+                                const frameHeight = 192;
+                                const currentFrame = this.game.bossQuestNPC.currentFrame;
+                                const sourceX = currentFrame * frameWidth;
+                                const sourceY = 0;
+                                
+                                this.game.ctx.drawImage(
+                                    this.game.questNPCIdleSprite,
+                                    sourceX, sourceY, frameWidth, frameHeight,
+                                    npcX, npcY, this.game.bossQuestNPC.width, this.game.bossQuestNPC.height
+                                );
+                                
+                                // Draw yellow exclamation point on top of NPC (only if not talking and should show)
+                                if (this.game.bossQuestNPC.showExclamation && !this.game.bossQuestNPC.isTalking) {
+                                    const exclamationX = npcX + this.game.bossQuestNPC.width / 2;
+                                    const exclamationY = npcY - 25; // 25 pixels above NPC
+                                    
+                                    // Draw yellow circle background
+                                    this.game.ctx.fillStyle = '#FFD700'; // Gold/Yellow
+                                    this.game.ctx.beginPath();
+                                    this.game.ctx.arc(exclamationX, exclamationY, 12, 0, Math.PI * 2);
+                                    this.game.ctx.fill();
+                                    
+                                    // Draw black border
+                                    this.game.ctx.strokeStyle = '#000000';
+                                    this.game.ctx.lineWidth = 2;
+                                    this.game.ctx.stroke();
+                                    
+                                    // Draw exclamation mark
+                                    this.game.ctx.fillStyle = '#000000';
+                                    this.game.ctx.font = 'bold 16px Arial';
+                                    this.game.ctx.textAlign = 'center';
+                                    this.game.ctx.textBaseline = 'middle';
+                                    this.game.ctx.fillText('!', exclamationX, exclamationY);
+                                }
+                                
+                                // Draw NPC dialog (speech bubble above NPC) - draw right after NPC sprite
+                                if (this.game.bossQuestNPC.isTalking) {
+                                    this.game.drawNPCDialog();
+                                }
+                            }
+                        }
+                        
+                        // Draw Quest NPC (Monk)
+                        if (this.game.questNPC && this.game.questNPCSpritesLoaded && this.game.questNPCIdleSprite) {
+                            const npcX = this.game.questNPC.x - this.game.camera.x + (this.game.cameraShake ? this.game.cameraShake.x : 0);
+                            const npcY = this.game.questNPC.y - this.game.camera.y + (this.game.cameraShake ? this.game.cameraShake.y : 0);
+                            
+                            // Only draw if in view
+                            if (npcX > -this.game.questNPC.width * 2 && npcX < this.game.canvas.width + this.game.questNPC.width * 2 &&
+                                npcY > -this.game.questNPC.height * 2 && npcY < this.game.canvas.height + this.game.questNPC.height * 2) {
+                                
+                                // Draw Quest NPC sprite (6 frames, 192x192 each, scaled to 130x130)
+                                const frameWidth = 192;
+                                const frameHeight = 192;
+                                const currentFrame = this.game.questNPC.currentFrame;
+                                const sourceX = currentFrame * frameWidth;
+                                const sourceY = 0;
+                                
+                                this.game.ctx.drawImage(
+                                    this.game.questNPCIdleSprite,
+                                    sourceX, sourceY, frameWidth, frameHeight,
+                                    npcX, npcY, this.game.questNPC.width, this.game.questNPC.height
+                                );
+                                
+                                // Draw yellow exclamation point on top of NPC (only if not talking and should show)
+                                if (this.game.questNPC.showExclamation && !this.game.questNPC.isTalking) {
+                                    const exclamationX = npcX + this.game.questNPC.width / 2;
+                                    const exclamationY = npcY - 25; // 25 pixels above NPC
+                                    
+                                    // Draw yellow circle background
+                                    this.game.ctx.fillStyle = '#FFD700'; // Gold/Yellow
+                                    this.game.ctx.beginPath();
+                                    this.game.ctx.arc(exclamationX, exclamationY, 12, 0, Math.PI * 2);
+                                    this.game.ctx.fill();
+                                    
+                                    // Draw black border
+                                    this.game.ctx.strokeStyle = '#000000';
+                                    this.game.ctx.lineWidth = 2;
+                                    this.game.ctx.stroke();
+                                    
+                                    // Draw exclamation mark
+                                    this.game.ctx.fillStyle = '#000000';
+                                    this.game.ctx.font = 'bold 16px Arial';
+                                    this.game.ctx.textAlign = 'center';
+                                    this.game.ctx.textBaseline = 'middle';
+                                    this.game.ctx.fillText('!', exclamationX, exclamationY);
+                                }
+                                
+                                // Draw NPC dialog (speech bubble above NPC) - draw right after NPC sprite
+                                if (this.game.questNPC.isTalking) {
+                                    this.game.drawNPCDialog();
+                                }
+                            }
+                        }
+                        
+                        // Draw enemy arrows
+                        if (this.game.enemyArrows && this.game.enemyArrows.length > 0) {
+                            for (const arrow of this.game.enemyArrows) {
+                                const arrowX = arrow.x - this.game.camera.x + (this.game.cameraShake ? this.game.cameraShake.x : 0);
+                                const arrowY = arrow.y - this.game.camera.y + (this.game.cameraShake ? this.game.cameraShake.y : 0);
+                                
+                                // Only draw if in view
+                                if (arrowX > -arrow.width * 2 && arrowX < this.game.canvas.width + arrow.width * 2 &&
+                                    arrowY > -arrow.height * 2 && arrowY < this.game.canvas.height + arrow.height * 2) {
+                                    
+                                    this.game.ctx.save();
+                                    this.game.ctx.translate(arrowX + arrow.width / 2, arrowY + arrow.height / 2);
+                                    
+                                    // Apply flips based on arrow properties
+                                    let scaleX = 1;
+                                    let scaleY = 1;
+                                    
+                                    if (arrow.flipHorizontal) {
+                                        scaleX = -1;
+                                    }
+                                    if (arrow.flipVertical) {
+                                        scaleY = -1;
+                                    }
+                                    
+                                    // Legacy support for old arrow format
+                                    if (arrow.flipHorizontal === undefined && arrow.flipVertical === undefined) {
+                                        if (arrow.shootingUp) {
+                                            scaleY = -1;
+                                        } else if (!arrow.shootingLeft) {
+                                            scaleX = -1;
+                                        }
+                                    }
+                                    
+                                    if (scaleX !== 1 || scaleY !== 1) {
+                                        this.game.ctx.scale(scaleX, scaleY);
+                                    }
+                                    
+                                    // Draw arrow sprite (check if sprite exists)
+                                    if (arrow.sprite) {
+                                        this.game.ctx.drawImage(
+                                            arrow.sprite,
+                                            0, 0, arrow.sprite.width, arrow.sprite.height,
+                                            -arrow.width / 2, -arrow.height / 2,
+                                            arrow.width, arrow.height
+                                        );
+                                    } else {
+                                        // Fallback: draw colored rectangle if sprite not loaded
+                                        this.game.ctx.fillStyle = '#ff0000';
+                                        this.game.ctx.fillRect(-arrow.width / 2, -arrow.height / 2, arrow.width, arrow.height);
+                                        console.warn('Enemy arrow sprite is null! Drawing fallback rectangle.');
+                                    }
+                                    
+                                    this.game.ctx.restore();
+                                }
+                            }
+                        }
+                        
+                        // Draw damage popups
+                        if (this.game.damagePopups && this.game.damagePopups.length > 0) {
+                            for (const popup of this.game.damagePopups) {
+                                const popupX = popup.x - this.game.camera.x + (this.game.cameraShake ? this.game.cameraShake.x : 0);
+                                const popupY = popup.y - this.game.camera.y + (this.game.cameraShake ? this.game.cameraShake.y : 0);
+                                
+                                // Only draw if in view
+                                if (popupX > -50 && popupX < this.game.canvas.width + 50 &&
+                                    popupY > -50 && popupY < this.game.canvas.height + 50) {
+                                    
+                                    // Fade out as lifetime decreases
+                                    const alpha = Math.min(1, popup.lifetime / popup.maxLifetime);
+                                    
+                                    this.game.ctx.save();
+                                    this.game.ctx.globalAlpha = alpha;
+                                    
+                                    // Draw damage text
+                                    this.game.ctx.font = 'bold 20px Arial';
+                                    this.game.ctx.fillStyle = '#ff0000';
+                                    this.game.ctx.strokeStyle = '#000000';
+                                    this.game.ctx.lineWidth = 2;
+                                    
+                                    const text = `-${popup.damage}${popup.isBlocked ? ' BLOCKED' : ''}`;
+                                    // Use different color for blocked attacks
+                                    if (popup.isBlocked) {
+                                        this.game.ctx.fillStyle = '#ffaa00'; // Orange for blocked
+                                        this.game.ctx.strokeStyle = '#000';
+                                    } else {
+                                        this.game.ctx.fillStyle = '#ff0000'; // Red for normal damage
+                                        this.game.ctx.strokeStyle = '#000';
+                                    }
+                                    this.game.ctx.strokeText(text, popupX, popupY);
+                                    this.game.ctx.fillText(text, popupX, popupY);
+                                    
+                                    this.game.ctx.restore();
+                                }
+                            }
+                        }
+                        
+                        // Draw arrows
+                        if (this.game.arrows && this.game.arrows.length > 0) {
+                            for (const arrow of this.game.arrows) {
+                                const arrowX = arrow.x - this.game.camera.x + (this.game.cameraShake ? this.game.cameraShake.x : 0);
+                                const arrowY = arrow.y - this.game.camera.y + (this.game.cameraShake ? this.game.cameraShake.y : 0);
+                                
+                                // Only draw if in view
+                                if (arrowX > -arrow.width * 2 && arrowX < this.canvas.width + arrow.width * 2 &&
+                                    arrowY > -arrow.height * 2 && arrowY < this.canvas.height + arrow.height * 2) {
+                                    
+                                    this.game.ctx.save();
+                                    this.game.ctx.translate(arrowX + arrow.width / 2, arrowY + arrow.height / 2);
+                                    
+                                    // Apply flips based on arrow properties
+                                    let scaleX = 1;
+                                    let scaleY = 1;
+                                    
+                                    if (arrow.flipHorizontal) {
+                                        scaleX = -1;
+                                    }
+                                    if (arrow.flipVertical) {
+                                        scaleY = -1;
+                                    }
+                                    
+                                    // Legacy support for old arrow format
+                                    if (arrow.flipHorizontal === undefined && arrow.flipVertical === undefined) {
+                                        if (arrow.shootingUp) {
+                                            // Flip vertically for up direction
+                                            scaleY = -1;
+                                        } else if (!arrow.shootingLeft) {
+                                            // Flip horizontally for right direction
+                                            scaleX = -1;
+                                        }
+                                    }
+                                    
+                                    if (scaleX !== 1 || scaleY !== 1) {
+                                        this.game.ctx.scale(scaleX, scaleY);
+                                    }
+                                    
+                                    // Draw arrow sprite
+                                    this.game.ctx.drawImage(
+                                        arrow.sprite,
+                                        0, 0, arrow.sprite.width, arrow.sprite.height,
+                                        -arrow.width / 2, -arrow.height / 2,
+                                        arrow.width, arrow.height
+                                    );
+                                    
+                                    this.game.ctx.restore();
+                                }
+                            }
+                        }
+                        
+                        // Render character after Trees Layer (so it appears on top of trees)
+                        const charX = this.game.character.x - this.game.camera.x + (this.game.cameraShake ? this.game.cameraShake.x : 0);
+                        const charY = this.game.character.y - this.game.camera.y + (this.game.cameraShake ? this.game.cameraShake.y : 0);
+                        const charCenterX = charX + this.game.character.width / 2;
+                        const charCenterY = charY + this.game.character.height / 2;
+                        
+                        // Draw direction indicators and triangle (debug visualization)
+                        if (this.game.keys['v']) {
+                            // Draw triangle area southward
+                            const triangleTopX = charCenterX;
+                            const triangleTopY = charY + this.game.character.height;
+                            const triangleBottomY = triangleTopY + 187; // 45% less long: 340 * 0.55 = 187
+                            const triangleLeftX = charX - 319; // 30% wider: 245 * 1.3 = 319
+                            const triangleRightX = charX + this.game.character.width + 319;
+                            
+                            this.game.ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+                            this.game.ctx.lineWidth = 2;
+                            this.game.ctx.beginPath();
+                            this.game.ctx.moveTo(triangleTopX, triangleTopY);
+                            this.game.ctx.lineTo(triangleLeftX, triangleBottomY);
+                            this.game.ctx.lineTo(triangleRightX, triangleBottomY);
+                            this.game.ctx.closePath();
+                            this.game.ctx.stroke();
+                            
+                            // Draw direction arrows
+                            const arrowLength = 60;
+                            const arrowSize = 8;
+                            
+                            // North (up) - Y decreases
+                            this.game.ctx.strokeStyle = '#00ff00'; // Green for North
+                            this.game.ctx.lineWidth = 3;
+                            this.game.ctx.beginPath();
+                            this.game.ctx.moveTo(charCenterX, charCenterY);
+                            this.game.ctx.lineTo(charCenterX, charCenterY - arrowLength);
+                            this.game.ctx.moveTo(charCenterX, charCenterY - arrowLength);
+                            this.game.ctx.lineTo(charCenterX - arrowSize, charCenterY - arrowLength + arrowSize);
+                            this.game.ctx.moveTo(charCenterX, charCenterY - arrowLength);
+                            this.game.ctx.lineTo(charCenterX + arrowSize, charCenterY - arrowLength + arrowSize);
+                            this.game.ctx.stroke();
+                            
+                            // South (down) - Y increases
+                            this.game.ctx.strokeStyle = '#ff0000'; // Red for South
+                            this.game.ctx.beginPath();
+                            this.game.ctx.moveTo(charCenterX, charCenterY);
+                            this.game.ctx.lineTo(charCenterX, charCenterY + arrowLength);
+                            this.game.ctx.moveTo(charCenterX, charCenterY + arrowLength);
+                            this.game.ctx.lineTo(charCenterX - arrowSize, charCenterY + arrowLength - arrowSize);
+                            this.game.ctx.moveTo(charCenterX, charCenterY + arrowLength);
+                            this.game.ctx.lineTo(charCenterX + arrowSize, charCenterY + arrowLength - arrowSize);
+                            this.game.ctx.stroke();
+                            
+                            // East (right) - X increases
+                            this.game.ctx.strokeStyle = '#0000ff'; // Blue for East
+                            this.game.ctx.beginPath();
+                            this.game.ctx.moveTo(charCenterX, charCenterY);
+                            this.game.ctx.lineTo(charCenterX + arrowLength, charCenterY);
+                            this.game.ctx.moveTo(charCenterX + arrowLength, charCenterY);
+                            this.game.ctx.lineTo(charCenterX + arrowLength - arrowSize, charCenterY - arrowSize);
+                            this.game.ctx.moveTo(charCenterX + arrowLength, charCenterY);
+                            this.game.ctx.lineTo(charCenterX + arrowLength - arrowSize, charCenterY + arrowSize);
+                            this.game.ctx.stroke();
+                            
+                            // West (left) - X decreases
+                            this.game.ctx.strokeStyle = '#ffff00'; // Yellow for West
+                            this.game.ctx.beginPath();
+                            this.game.ctx.moveTo(charCenterX, charCenterY);
+                            this.game.ctx.lineTo(charCenterX - arrowLength, charCenterY);
+                            this.game.ctx.moveTo(charCenterX - arrowLength, charCenterY);
+                            this.game.ctx.lineTo(charCenterX - arrowLength + arrowSize, charCenterY - arrowSize);
+                            this.game.ctx.moveTo(charCenterX - arrowLength, charCenterY);
+                            this.game.ctx.lineTo(charCenterX - arrowLength + arrowSize, charCenterY + arrowSize);
+                            this.game.ctx.stroke();
+                            
+                            // Draw labels
+                            this.game.ctx.fillStyle = '#ffffff';
+                            this.game.ctx.font = '16px Arial';
+                            this.game.ctx.textAlign = 'center';
+                            this.game.ctx.fillText('N', charCenterX, charCenterY - arrowLength - 10);
+                            this.game.ctx.fillText('S', charCenterX, charCenterY + arrowLength + 25);
+                            this.game.ctx.fillText('E', charCenterX + arrowLength + 20, charCenterY + 5);
+                            this.game.ctx.fillText('W', charCenterX - arrowLength - 20, charCenterY + 5);
+                            
+                            // Draw coordinate info
+                            this.game.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                            this.game.ctx.font = '12px Arial';
+                            this.game.ctx.textAlign = 'left';
+                            this.game.ctx.fillText(`Char Y: ${Math.floor(this.game.character.y)}`, charX - 30, charY - 20);
+                            this.game.ctx.fillText(`Char X: ${Math.floor(this.game.character.x)}`, charX - 30, charY - 35);
+                        }
+                        
+                        // Draw character sprite or fallback rectangle
+                        // Determine which sprite to use (idle, running, dashing, or attacking)
+                        const isRanged = this.game.character.weaponMode === 'ranged';
+                        
+                        // Check for death or hurt states first
+                        let spriteImg = null;
+                        let spriteLoaded = false;
+                        let frameCount = 0;
+                        
+                        if (this.game.character.isDead) {
+                            // Death sprite
+                            spriteImg = isRanged ? this.game.character.rangedDeathSpriteImage : this.game.character.deathSpriteImage;
+                            spriteLoaded = isRanged ? this.game.character.rangedDeathSpriteLoaded : this.game.character.deathSpriteLoaded;
+                            frameCount = this.game.character.deathFrames || 8;
+                        } else if (this.game.character.isHurt) {
+                            // Hurt sprite
+                            spriteImg = isRanged ? this.game.character.rangedHurtSpriteImage : this.game.character.hurtSpriteImage;
+                            spriteLoaded = isRanged ? this.game.character.rangedHurtSpriteLoaded : this.game.character.hurtSpriteLoaded;
+                            frameCount = this.game.character.hurtFrames || 4;
+                        } else {
+                            // Normal sprites
+                            spriteImg = isRanged ? this.game.character.rangedSpriteImage : this.game.character.spriteImage;
+                            spriteLoaded = isRanged ? this.game.character.rangedSpriteLoaded : this.game.character.spriteLoaded;
+                            frameCount = isRanged ? this.game.character.rangedIdleFrames : this.game.character.idleFrames;
+                        }
+                        
+                        // Declare attack state variables (needed for bow rendering later)
+                        const isMeleeAttacking = !this.game.character.isDead && !this.game.character.isHurt && !isRanged && (this.game.character.attackType === 'basic' || this.game.character.attackType === 'strong') && this.game.character.attackTimer > 0;
+                        const isRangedAttacking = !this.game.character.isDead && !this.game.character.isHurt && isRanged && this.game.character.attackType === 'strong' && this.game.character.attackTimer > 0;
+                        const isAttacking = isMeleeAttacking || isRangedAttacking;
+                        const isBasicAttack = this.game.character.attackType === 'basic' && this.game.character.attackTimer > 0;
+                        const isStrongAttack = this.game.character.attackType === 'strong' && this.game.character.attackTimer > 0;
+                        
+                        // Only override sprite if not hurt/dead
+                        if (!this.game.character.isDead && !this.game.character.isHurt) {
+                            if (this.game.character.isDashing) {
+                                if (isRanged && this.game.character.rangedDashSpriteLoaded) {
+                                    spriteImg = this.game.character.rangedDashSpriteImage;
+                                    spriteLoaded = this.game.character.rangedDashSpriteLoaded;
+                                    frameCount = this.game.character.rangedDashFrames;
+                                } else if (!isRanged && this.game.character.dashSpriteLoaded) {
+                                    spriteImg = this.game.character.dashSpriteImage;
+                                    spriteLoaded = this.game.character.dashSpriteLoaded;
+                                    frameCount = this.game.character.dashFrames;
+                                }
+                            } else if (isRangedAttacking) {
+                                // Ranged attack sprites (body)
+                                if (this.game.character.isMoving && this.game.character.rangedRunAttackSpriteLoaded) {
+                                    spriteImg = this.game.character.rangedRunAttackSpriteImage;
+                                    spriteLoaded = this.game.character.rangedRunAttackSpriteLoaded;
+                                    frameCount = this.game.character.rangedRunAttackFrames;
+                                } else if (this.game.character.rangedAttackSpriteLoaded) {
+                                    spriteImg = this.game.character.rangedAttackSpriteImage;
+                                    spriteLoaded = this.game.character.rangedAttackSpriteLoaded;
+                                    frameCount = this.game.character.rangedAttackFrames;
+                                }
+                            } else if (isMeleeAttacking) {
+                                // Attack sprites (static or running)
+                                if (this.game.character.isMoving) {
+                                    // Running attack
+                                    if (isStrongAttack && this.game.character.runStrongAttackSpriteLoaded) {
+                                        spriteImg = this.game.character.runStrongAttackSpriteImage;
+                                        spriteLoaded = this.game.character.runStrongAttackSpriteLoaded;
+                                        frameCount = this.game.character.runStrongAttackFrames;
+                                    } else if (isBasicAttack && this.game.character.runAttackSpriteLoaded) {
+                                        spriteImg = this.game.character.runAttackSpriteImage;
+                                        spriteLoaded = this.game.character.runAttackSpriteLoaded;
+                                        frameCount = this.game.character.runAttackFrames;
+                                    }
+                                } else {
+                                    // Static attack
+                                    if (isStrongAttack && this.game.character.strongAttackSpriteLoaded) {
+                                        spriteImg = this.game.character.strongAttackSpriteImage;
+                                        spriteLoaded = this.game.character.strongAttackSpriteLoaded;
+                                        frameCount = this.game.character.strongAttackFrames;
+                                    } else if (isBasicAttack && this.game.character.attackSpriteLoaded) {
+                                        spriteImg = this.game.character.attackSpriteImage;
+                                        spriteLoaded = this.game.character.attackSpriteLoaded;
+                                        frameCount = this.game.character.attackFrames;
+                                    }
+                                }
+                            } else if (this.game.character.isMoving) {
+                                if (isRanged && this.game.character.rangedRunSpriteLoaded) {
+                                    spriteImg = this.game.character.rangedRunSpriteImage;
+                                    spriteLoaded = this.game.character.rangedRunSpriteLoaded;
+                                    frameCount = this.game.character.rangedRunFrames;
+                                } else if (!isRanged && this.game.character.runSpriteLoaded) {
+                                    spriteImg = this.game.character.runSpriteImage;
+                                    spriteLoaded = this.game.character.runSpriteLoaded;
+                                    frameCount = this.game.character.runFrames;
+                                }
+                            }
+                        }
+                        
+                        // Draw status effect auras BEHIND the character
+                        const auraCenterX = charX + this.game.character.width / 2;
+                        const auraCenterY = charY + this.game.character.height / 2;
+                        
+                        // Health Regeneration Glow (mild green pulse)
+                        const isRegenerating = !this.game.character.isDead && 
+                                               this.game.character.health < this.game.character.maxHealth && 
+                                               this.game.character.lastDamageTime >= 3.0;
+                        if (isRegenerating) {
+                            // Pulsing effect based on regen timer
+                            const pulsePhase = (this.game.character.regenTimer / 2.0) * Math.PI * 2;
+                            const pulseIntensity = 0.275 + Math.sin(pulsePhase) * 0.175; // 10% to 45% alpha
+                            
+                            // Draw green glow
+                            const regenGradient = this.game.ctx.createRadialGradient(
+                                auraCenterX, auraCenterY, 0,
+                                auraCenterX, auraCenterY, this.game.character.width * 0.8
+                            );
+                            regenGradient.addColorStop(0, `rgba(100, 255, 100, ${pulseIntensity})`);
+                            regenGradient.addColorStop(0.5, `rgba(50, 200, 50, ${pulseIntensity * 0.5})`);
+                            regenGradient.addColorStop(1, 'rgba(0, 150, 0, 0)');
+                            
+                            this.game.ctx.fillStyle = regenGradient;
+                            this.game.ctx.beginPath();
+                            this.game.ctx.arc(auraCenterX, auraCenterY, this.game.character.width * 0.8, 0, Math.PI * 2);
+                            this.game.ctx.fill();
+                        }
+                        
+                        // Berserker Glow (red pulse when below 50% health)
+                        const isBerserkerActive = this.game.abilities && 
+                                                  this.game.abilities.berserker && 
+                                                  this.game.character.health < this.game.character.maxHealth * 0.5 &&
+                                                  !this.game.character.isDead;
+                        if (isBerserkerActive) {
+                            // Intense pulsing red glow
+                            const berserkerPulse = (Date.now() % 1000) / 1000; // 0 to 1 every second
+                            const berserkerIntensity = 0.2 + Math.sin(berserkerPulse * Math.PI * 2) * 0.15; // 0.05 to 0.35 alpha
+                            
+                            // Draw fierce red glow
+                            const berserkerGradient = this.game.ctx.createRadialGradient(
+                                auraCenterX, auraCenterY, 0,
+                                auraCenterX, auraCenterY, this.game.character.width * 0.9
+                            );
+                            berserkerGradient.addColorStop(0, `rgba(255, 50, 50, ${berserkerIntensity})`);
+                            berserkerGradient.addColorStop(0.4, `rgba(200, 0, 0, ${berserkerIntensity * 0.6})`);
+                            berserkerGradient.addColorStop(1, 'rgba(150, 0, 0, 0)');
+                            
+                            this.game.ctx.fillStyle = berserkerGradient;
+                            this.game.ctx.beginPath();
+                            this.game.ctx.arc(auraCenterX, auraCenterY, this.game.character.width * 0.9, 0, Math.PI * 2);
+                            this.game.ctx.fill();
+                        }
+                        
+                        if (spriteLoaded && spriteImg) {
+                            // Draw sprite with animation (scaled from 42x42 to 64x64)
+                            // For hurt/death sprites, use 42x42 frame size
+                            let frameWidth = 42;
+                            let frameHeight = 42;
+                            
+                            if (this.game.character.isDead || this.game.character.isHurt) {
+                                // Hurt and death sprites are 42x42
+                                frameWidth = 42;
+                                frameHeight = 42;
+                            } else {
+                                // Other sprites use the character's frame size
+                                frameWidth = this.game.character.spriteFrameWidth || 42;
+                                frameHeight = this.game.character.spriteFrameHeight || 42;
+                            }
+                            
+                            // Clamp frame index to valid range (especially important for hurt/death animations)
+                            let frameIndex = this.game.character.currentFrame;
+                            if (frameIndex >= frameCount) {
+                                frameIndex = frameCount - 1;
+                            }
+                            if (frameIndex < 0) {
+                                frameIndex = 0;
+                            }
+                            const sourceX = frameIndex * frameWidth;
+                            const sourceY = 0;
+                            
+                            // Removed magic attack tint (was causing gray box)
+                            
+                            // Draw sprite frame with flipping for left/right direction
+                            this.game.ctx.save();
+                            
+                            if (!this.game.character.facingRight) {
+                                // Flip horizontally when facing left
+                                this.game.ctx.translate(charX + this.game.character.width, charY);
+                                this.game.ctx.scale(-1, 1);
+                                this.game.ctx.drawImage(
+                                    spriteImg,
+                                    sourceX, sourceY, frameWidth, frameHeight,
+                                    0, 0, this.game.character.width, this.game.character.height
+                                );
+                            } else {
+                                // Draw normally when facing right
+                                this.game.ctx.drawImage(
+                                    spriteImg,
+                                    sourceX, sourceY, frameWidth, frameHeight,
+                                    charX, charY, this.game.character.width, this.game.character.height
+                                );
+                            }
+                            
+                            this.game.ctx.restore();
+                        } else {
+                            // Fallback: draw colored rectangle if sprite not loaded
+                            this.game.ctx.fillStyle = this.game.character.isDead ? '#000000' : (this.game.character.isHurt ? '#ff0000' : this.game.character.color || '#ff0000');
+                            this.game.ctx.fillRect(charX, charY, this.game.character.width, this.game.character.height);
+                        }
+                        
+                        // Draw shield effect on character if active (AFTER character so it's visible on top)
+                        if (this.game.shieldEffect && this.game.shieldEffect.active && this.game.shieldSpriteLoaded && this.game.shieldSprite) {
+                            const shieldX = charX + (this.game.character.width / 2) - (this.game.shieldEffect.width / 2);
+                            const shieldY = charY + (this.game.character.height / 2) - (this.game.shieldEffect.height / 2);
+                            
+                            // Calculate frame position (15 frames: 3 rows x 5 frames per row)
+                            const frameWidth = 128;
+                            const frameHeight = 128;
+                            const framesPerRow = 5;
+                            const currentRow = Math.floor(this.game.shieldEffect.currentFrame / framesPerRow);
+                            const currentCol = this.game.shieldEffect.currentFrame % framesPerRow;
+                            const sourceX = currentCol * frameWidth;
+                            const sourceY = currentRow * frameHeight;
+                            
+                            this.game.ctx.save();
+                            this.game.ctx.globalAlpha = this.game.shieldEffect.opacity;
+                            this.game.ctx.drawImage(
+                                this.game.shieldSprite,
+                                sourceX, sourceY, frameWidth, frameHeight,
+                                shieldX, shieldY, this.game.shieldEffect.width, this.game.shieldEffect.height
+                            );
+                            this.game.ctx.restore();
+                        }
+                        
+                        // Draw bow sprite on top when in ranged mode and attacking (only if not hurt/dead)
+                        if (!this.game.character.isDead && !this.game.character.isHurt && isRangedAttacking && this.game.character.bowSpriteLoaded && this.game.character.bowSpriteImage) {
+                            const bowFrameWidth = this.game.character.spriteFrameWidth || 42;
+                            const bowFrameHeight = this.game.character.spriteFrameHeight || 42;
+                            const bowFrameIndex = this.game.character.currentFrame % this.game.character.bowFrames;
+                            const bowSourceX = bowFrameIndex * bowFrameWidth;
+                            const bowSourceY = 0;
+                            
+                            // Center of character for rotation
+                            const centerX = charX + this.game.character.width / 2;
+                            const centerY = charY + this.game.character.height / 2;
+                            
+                            // Get shoot direction
+                            const shootDir = this.game.character.shootDirection;
+                            
+                            // Determine which bow sprite to use based on direction
+                            // Up: y < 0 and |y| > |x|, Down: y > 0 and |y| > |x|, else: left/right
+                            const absX = Math.abs(shootDir.x);
+                            const absY = Math.abs(shootDir.y);
+                            const shootingUp = shootDir.y < 0 && absY > absX;
+                            const shootingDown = shootDir.y > 0 && absY > absX;
+                            const shootingLeft = shootDir.x < 0 && !shootingUp && !shootingDown;
+                            
+                            // Select the correct bow sprite
+                            let bowSprite = this.game.character.bowSpriteImage;
+                            if (shootingUp && this.game.character.bowUpSpriteLoaded) {
+                                bowSprite = this.game.character.bowUpSpriteImage;
+                            } else if (shootingDown && this.game.character.bowDownSpriteLoaded) {
+                                bowSprite = this.game.character.bowDownSpriteImage;
+                            }
+                            
+                            this.game.ctx.save();
+                            this.game.ctx.translate(centerX, centerY);
+                            
+                            // Only apply transforms for left/right shooting (up/down sprites are already oriented)
+                            if (shootingUp || shootingDown) {
+                                // No rotation needed for up/down sprites
+                                // Just flip horizontally if character is facing left
+                                if (!this.game.character.facingRight) {
+                                    this.game.ctx.scale(-1, 1);
+                                }
+                            } else {
+                                // Left/right shooting - apply rotation and flip
+                                if (shootingLeft) {
+                                    this.game.ctx.scale(-1, 1);
+                                    this.game.ctx.rotate(Math.atan2(shootDir.y, -shootDir.x));
+                                } else {
+                                    this.game.ctx.rotate(Math.atan2(shootDir.y, shootDir.x));
+                                }
+                            }
+                            
+                            // Draw bow sprite centered
+                            this.game.ctx.drawImage(
+                                bowSprite,
+                                bowSourceX, bowSourceY, bowFrameWidth, bowFrameHeight,
+                                -this.game.character.width / 2, -this.game.character.height / 2,
+                                this.game.character.width, this.game.character.height
+                            );
+                            this.game.ctx.restore();
+                        }
+                        
+                        // Attack effect circles removed
+                        
+                        // Draw character center point (for debugging)
+                        if (this.game.keys['v']) {
+                            this.game.ctx.fillStyle = '#ffff00';
+                            this.game.ctx.beginPath();
+                            this.game.ctx.arc(charCenterX, charCenterY, 3, 0, Math.PI * 2);
+                            this.game.ctx.fill();
+                        }
+                        
+                        // Debug: Draw map bounds rectangle (press B key to toggle)
+                        if (this.game.mapBounds && this.game.keys['b']) {
+                            const bounds = this.game.mapBounds;
+                            const boundsX = bounds.minX - this.game.camera.x;
+                            const boundsY = bounds.minY - this.game.camera.y;
+                            const boundsW = bounds.maxX - bounds.minX;
+                            const boundsH = bounds.maxY - bounds.minY;
+                            
+                            // Draw bounds rectangle
+                            this.game.ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+                            this.game.ctx.lineWidth = 3;
+                            this.game.ctx.strokeRect(boundsX, boundsY, boundsW, boundsH);
+                            
+                            // Draw camera limit lines
+                            const zoom = this.game.cameraZoom || 1.0;
+                            const viewWidth = this.canvas.width / zoom;
+                            const viewHeight = this.canvas.height / zoom;
+                            const minCameraX = bounds.minX;
+                            const maxCameraX = bounds.maxX - viewWidth;
+                            const minCameraY = bounds.minY;
+                            const maxCameraY = bounds.maxY - viewHeight;
+                            
+                            this.game.ctx.strokeStyle = 'rgba(255, 0, 255, 0.6)';
+                            this.game.ctx.lineWidth = 2;
+                            this.game.ctx.setLineDash([5, 5]);
+                            // Left limit
+                            if (minCameraX - this.game.camera.x > -1000 && minCameraX - this.game.camera.x < this.canvas.width + 1000) {
+                                this.game.ctx.beginPath();
+                                this.game.ctx.moveTo(minCameraX - this.game.camera.x, boundsY - 1000);
+                                this.game.ctx.lineTo(minCameraX - this.game.camera.x, boundsY + boundsH + 1000);
+                                this.game.ctx.stroke();
+                            }
+                            // Right limit
+                            if (maxCameraX - this.game.camera.x > -1000 && maxCameraX - this.game.camera.x < this.canvas.width + 1000) {
+                                this.game.ctx.beginPath();
+                                this.game.ctx.moveTo(maxCameraX - this.game.camera.x, boundsY - 1000);
+                                this.game.ctx.lineTo(maxCameraX - this.game.camera.x, boundsY + boundsH + 1000);
+                                this.game.ctx.stroke();
+                            }
+                            // Top limit
+                            if (minCameraY - this.game.camera.y > -1000 && minCameraY - this.game.camera.y < this.canvas.height + 1000) {
+                                this.game.ctx.beginPath();
+                                this.game.ctx.moveTo(boundsX - 1000, minCameraY - this.game.camera.y);
+                                this.game.ctx.lineTo(boundsX + boundsW + 1000, minCameraY - this.game.camera.y);
+                                this.game.ctx.stroke();
+                            }
+                            // Bottom limit
+                            if (maxCameraY - this.game.camera.y > -1000 && maxCameraY - this.game.camera.y < this.canvas.height + 1000) {
+                                this.game.ctx.beginPath();
+                                this.game.ctx.moveTo(boundsX - 1000, maxCameraY - this.game.camera.y);
+                                this.game.ctx.lineTo(boundsX + boundsW + 1000, maxCameraY - this.game.camera.y);
+                                this.game.ctx.stroke();
+                            }
+                            this.game.ctx.setLineDash([]);
+                        }
+                    }
+                    
+                    this.game.ctx.restore();
+                    
+                    // Draw player health bar in top left (after zoom transform, so it stays fixed)
+                    this.game.drawPlayerHealthBar();
+                    
+                    // Draw XP bar below health bar
+                    this.game.drawXPBar();
+                    
+                        // Draw quest objective below XP bar
+                        this.game.drawQuestObjective();
+                        
+                        // Draw magic projectiles
+                        if (this.game.magicProjectiles && this.game.magicProjectiles.length > 0) {
+                            for (const proj of this.game.magicProjectiles) {
+                                const projX = proj.x - this.game.camera.x + (this.game.cameraShake ? this.game.cameraShake.x : 0);
+                                const projY = proj.y - this.game.camera.y + (this.game.cameraShake ? this.game.cameraShake.y : 0);
+                                
+                                // Only draw if in view
+                                if (projX > -proj.width * 2 && projX < this.canvas.width + proj.width * 2 &&
+                                    projY > -proj.height * 2 && projY < this.canvas.height + proj.height * 2) {
+                                    
+                                    if (this.game.fireSplittersSpriteLoaded && this.game.fireSplittersSprite) {
+                                        // Calculate frame position (6 frames: 5 in row 1, 1 in row 2)
+                                        const frameWidth = 128;
+                                        const frameHeight = 64;
+                                        let sourceX, sourceY;
+                                        
+                                        if (proj.currentFrame < 5) {
+                                            // First 5 frames in row 1
+                                            sourceX = proj.currentFrame * frameWidth;
+                                            sourceY = 0;
+                                        } else {
+                                            // 6th frame in row 2
+                                            sourceX = 0;
+                                            sourceY = frameHeight;
+                                        }
+                                        
+                                        // Flip horizontally if facing left
+                                        this.game.ctx.save();
+                                        if (!proj.facingRight) {
+                                            this.game.ctx.translate(projX + proj.width, projY);
+                                            this.game.ctx.scale(-1, 1);
+                                            this.game.ctx.drawImage(
+                                                this.game.fireSplittersSprite,
+                                                sourceX, sourceY, frameWidth, frameHeight,
+                                                0, 0, proj.width, proj.height
+                                            );
+                                        } else {
+                                            this.game.ctx.drawImage(
+                                                this.game.fireSplittersSprite,
+                                                sourceX, sourceY, frameWidth, frameHeight,
+                                                projX, projY, proj.width, proj.height
+                                            );
+                                        }
+                                        this.game.ctx.restore();
+                                    } else {
+                                        // Fallback: draw orange rectangle
+                                        this.game.ctx.fillStyle = '#ff6600';
+                                        this.game.ctx.fillRect(projX, projY, proj.width, proj.height);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Draw heavy attack effects (follows sword during strong attacks)
+                        if (this.game.heavyAttackEffects && this.game.heavyAttackEffects.length > 0) {
+                            for (const effect of this.game.heavyAttackEffects) {
+                                const effectX = effect.x - this.game.camera.x + (this.game.cameraShake ? this.game.cameraShake.x : 0);
+                                const effectY = effect.y - this.game.camera.y + (this.game.cameraShake ? this.game.cameraShake.y : 0);
+                                
+                                // Only draw if in view
+                                if (effectX > -effect.width * 2 && effectX < this.canvas.width + effect.width * 2 &&
+                                    effectY > -effect.height * 2 && effectY < this.canvas.height + effect.height * 2) {
+                                    
+                                    if (this.game.heavyAttackEffectSpriteLoaded && this.game.heavyAttackEffectSprite) {
+                                        // Calculate frame position (5 frames, 192x128 each)
+                                        const frameWidth = 192;
+                                        const frameHeight = 128;
+                                        const sourceX = effect.currentFrame * frameWidth;
+                                        const sourceY = 0;
+                                        
+                                        // Flip horizontally if facing left
+                                        this.game.ctx.save();
+                                        if (!effect.facingRight) {
+                                            this.game.ctx.translate(effectX + effect.width, effectY);
+                                            this.game.ctx.scale(-1, 1);
+                                            this.game.ctx.drawImage(
+                                                this.game.heavyAttackEffectSprite,
+                                                sourceX, sourceY, frameWidth, frameHeight,
+                                                0, 0, effect.width, effect.height
+                                            );
+                                        } else {
+                                            this.game.ctx.drawImage(
+                                                this.game.heavyAttackEffectSprite,
+                                                sourceX, sourceY, frameWidth, frameHeight,
+                                                effectX, effectY, effect.width, effect.height
+                                            );
+                                        }
+                                        this.game.ctx.restore();
+                                    } else {
+                                        // Fallback: draw yellow rectangle
+                                        this.game.ctx.fillStyle = '#ffaa00';
+                                        this.game.ctx.fillRect(effectX, effectY, effect.width, effect.height);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Check for ability choice modal
+                        this.updateAbilityChoiceModal();
+                };
+                
+                // Override input to use joystick (but preserve keyboard input when joystick is not active)
+                const originalUpdate = this.game.update.bind(this.game);
+                this.game.update = (deltaTime) => {
+                    // Update last movement direction from joystick if active
+                    if (this.joystickActive && (Math.abs(this.joystickInput.x) > 0.1 || Math.abs(this.joystickInput.y) > 0.1)) {
+                        // Normalize joystick input for direction
+                        const len = Math.sqrt(this.joystickInput.x * this.joystickInput.x + this.joystickInput.y * this.joystickInput.y);
+                        if (len > 0) {
+                            this.game.character.lastMoveDirection.x = this.joystickInput.x / len;
+                            this.game.character.lastMoveDirection.y = this.joystickInput.y / len;
+                            // Also update shoot direction for ranged mode
+                            if (this.game.character.weaponMode === 'ranged') {
+                                this.game.character.shootDirection.x = this.joystickInput.x / len;
+                                this.game.character.shootDirection.y = this.joystickInput.y / len;
+                            }
+                        }
+                    }
+                    
+                    // Only override keyboard input if joystick is active, otherwise preserve keyboard input
+                    if (this.joystickActive) {
+                        // Convert joystick input to keyboard input (only when joystick is active)
+                        if (this.joystickInput.x < -0.3) {
+                            this.game.keys['a'] = true;
+                            this.game.keys['arrowleft'] = true;
+                        } else if (Math.abs(this.joystickInput.x) <= 0.3) {
+                            // Only clear if joystick is not providing input
+                            this.game.keys['a'] = false;
+                            this.game.keys['arrowleft'] = false;
+                        }
+                        
+                        if (this.joystickInput.x > 0.3) {
+                            this.game.keys['d'] = true;
+                            this.game.keys['arrowright'] = true;
+                        } else if (Math.abs(this.joystickInput.x) <= 0.3) {
+                            // Only clear if joystick is not providing input
+                            this.game.keys['d'] = false;
+                            this.game.keys['arrowright'] = false;
+                        }
+                        
+                        if (this.joystickInput.y < -0.3) {
+                            this.game.keys['w'] = true;
+                            this.game.keys['arrowup'] = true;
+                        } else if (Math.abs(this.joystickInput.y) <= 0.3) {
+                            // Only clear if joystick is not providing input
+                            this.game.keys['w'] = false;
+                            this.game.keys['arrowup'] = false;
+                        }
+                        
+                        if (this.joystickInput.y > 0.3) {
+                            this.game.keys['s'] = true;
+                            this.game.keys['arrowdown'] = true;
+                        } else if (Math.abs(this.joystickInput.y) <= 0.3) {
+                            // Only clear if joystick is not providing input
+                            this.game.keys['s'] = false;
+                            this.game.keys['arrowdown'] = false;
+                        }
+                    }
+                    // If joystick is not active, keyboard input is preserved (handled by setupKeyboard)
+                    
+                    // Call original update (handles movement, animations, etc.)
+                    // But we need to override the camera calculation
+                    originalUpdate(deltaTime);
+                    
+                    // Update cooldown timer display for basic attack button
+                    this.updateCooldownDisplay();
+                    
+                    // Override camera calculation with bounds clamping
+                    if (this.game.mapBounds) {
+                        const zoom = this.game.cameraZoom || 1.0;
+                        const viewWidth = this.canvas.width / zoom;
+                        const viewHeight = this.canvas.height / zoom;
+                        
+                        const bounds = this.game.mapBounds;
+                        
+                        // Calculate desired camera position (centered on character)
+                        // Account for zoom: character should be centered in the zoomed view
+                        // Center character on screen (accounting for character center, not top-left)
+                        const charCenterX = this.game.character.x + this.game.character.width / 2;
+                        const charCenterY = this.game.character.y + this.game.character.height / 2;
+                        let desiredCameraX = charCenterX - viewWidth / 2;
+                        let desiredCameraY = charCenterY - viewHeight / 2;
+                        
+                        // Calculate camera limits (camera shouldn't show past map edges)
+                        // Camera position is the top-left of the viewport
+                        const minCameraX = bounds.minX;
+                        const maxCameraX = Math.max(minCameraX, bounds.maxX - viewWidth);
+                        const minCameraY = bounds.minY;
+                        const maxCameraY = Math.max(minCameraY, bounds.maxY - viewHeight);
+                        
+                        // Clamp camera position to stay within bounds
+                        const clampedX = Math.max(minCameraX, Math.min(maxCameraX, desiredCameraX));
+                        const clampedY = Math.max(minCameraY, Math.min(maxCameraY, desiredCameraY));
+                        
+                        // Force camera to clamped position (override any other camera setting)
+                        this.game.camera.x = clampedX;
+                        this.game.camera.y = clampedY;
+                        
+                        // Debug logging (only once)
+                        if (!this._boundsDebugLogged) {
+                            console.log('=== Camera Bounds Debug ===');
+                            console.log('Map Content Bounds:', bounds);
+                            console.log('View Size (with zoom):', { width: viewWidth, height: viewHeight });
+                            console.log('Camera Limits:', {
+                                minX: minCameraX, maxX: maxCameraX,
+                                minY: minCameraY, maxY: maxCameraY
+                            });
+                            console.log('Desired Camera:', { x: desiredCameraX, y: desiredCameraY });
+                            console.log('Clamped Camera:', { x: clampedX, y: clampedY });
+                            console.log('Current Character:', { x: this.game.character.x, y: this.game.character.y });
+                            this._boundsDebugLogged = true;
+                        }
+                    } else {
+                        // If bounds not calculated, use normal camera (shouldn't happen)
+                        console.warn('Map bounds not calculated yet!');
+                    }
+                    
+                    // Update status display
+                    const posEl = document.getElementById('position');
+                    if (posEl && this.game.character) {
+                        posEl.textContent = `Pos: (${Math.floor(this.game.character.x)}, ${Math.floor(this.game.character.y)})`;
+                    }
+                };
+                
+                // Load map
+                const loadingScreen = document.getElementById('loadingScreen');
+                const statusEl = document.getElementById('status');
+                
+                // Check if running from file:// protocol (CORS issue)
+                if (window.location.protocol === 'file:') {
+                    statusEl.textContent = 'ERROR: Use a local server!';
+                    statusEl.style.color = '#ff6b6b';
+                    const errorMsg = document.createElement('div');
+                    errorMsg.style.marginTop = '10px';
+                    errorMsg.style.fontSize = '12px';
+                    errorMsg.style.color = '#ffaaaa';
+                    errorMsg.innerHTML = 'Run: <code>start-server.bat</code><br>Then open: http://localhost:8000/mobile-game.html';
+                    loadingScreen.appendChild(errorMsg);
+                    console.error('CORS Error: You must run a local web server!');
+                    console.error('Use: python -m http.server 8000');
+                    console.error('Or: npx http-server -p 8000');
+                    console.error('Or run: start-server.bat');
+                    return;
+                }
+                
+                this.game.loadMap('Goblinraiders.tmj').then(() => {
+                    statusEl.textContent = 'Map loaded!';
+                    
+                    // Calculate map bounds after map is loaded
+                    this.game.calculateMapBounds();
+                    
+                    // Verify bounds were calculated
+                    if (this.game.mapBounds) {
+                        console.log('✓ Map bounds calculated:', this.game.mapBounds);
+                    } else {
+                        console.error('✗ Failed to calculate map bounds!');
+                        statusEl.textContent = 'Warning: Could not calculate map bounds';
+                    }
+                    
+                    // Center character in viewport
+                    if (this.game.character && this.game.spawnPoint) {
+                        // Character is already positioned at spawn point
+                        // Camera will follow automatically
+                    }
+                    
+                    setTimeout(() => {
+                        loadingScreen.classList.add('hidden');
+                        this.game.start();
+                        statusEl.textContent = 'Game Ready - Press B to see bounds';
+                        // Update button visibility after game starts
+                        this.updateButtonVisibility();
+                    }, 500);
+                }).catch(err => {
+                    statusEl.textContent = 'Error: ' + err.message;
+                    statusEl.style.color = '#ff6b6b';
+                    console.error(err);
+                });
+            }
+        }
+        
+        // Initialize when page loads
+        let mobileGameInstance = null;
+        window.addEventListener('load', () => {
+            mobileGameInstance = new MobileGame();
+        });
+        
+        // Prevent default touch behaviors
+        document.addEventListener('touchstart', (e) => {
+            if (e.target === document.getElementById('gameCanvas') || 
+                e.target === document.getElementById('joystickContainer')) {
+                e.preventDefault();
+            }
+            
+            // Check for NPC interaction (only if not on joystick or attack buttons)
+            const canvas = document.getElementById('gameCanvas');
+            if (e.target === canvas && mobileGameInstance && mobileGameInstance.game && mobileGameInstance.game.questNPC) {
+                const rect = canvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                const screenX = touch.clientX - rect.left;
+                const screenY = touch.clientY - rect.top;
+                
+                // Check if touch is on NPC
+                const npcType = mobileGameInstance.game.checkNPCClick(screenX, screenY);
+                if (npcType) {
+                    const npc = npcType === 'bossQuestNPC' ? mobileGameInstance.game.bossQuestNPC : mobileGameInstance.game.questNPC;
+                    // If dialog is active, advance it; otherwise start it
+                    if (npc.isTalking) {
+                        mobileGameInstance.game.advanceDialog(npcType);
+                    } else {
+                        mobileGameInstance.game.startNPCDialog(npcType);
+                    }
+                    e.preventDefault();
+                    return;
+                }
+                
+                // If dialog is active and touch is anywhere on canvas, advance dialog
+                const activeNPC = (mobileGameInstance.game.bossQuestNPC && mobileGameInstance.game.bossQuestNPC.isTalking) 
+                    ? mobileGameInstance.game.bossQuestNPC 
+                    : (mobileGameInstance.game.questNPC && mobileGameInstance.game.questNPC.isTalking ? mobileGameInstance.game.questNPC : null);
+                if (activeNPC) {
+                    const activeNPCType = (mobileGameInstance.game.bossQuestNPC && mobileGameInstance.game.bossQuestNPC.isTalking) ? 'bossQuestNPC' : 'questNPC';
+                    mobileGameInstance.game.advanceDialog(activeNPCType);
+                    e.preventDefault();
+                    return;
+                }
+            }
+        }, { passive: false });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (e.target === document.getElementById('gameCanvas') || 
+                e.target === document.getElementById('joystickContainer')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        
+        // Also handle mouse clicks for desktop testing
+        document.getElementById('gameCanvas').addEventListener('click', (e) => {
+            if (!mobileGameInstance || !mobileGameInstance.game || !mobileGameInstance.game.questNPC) return;
+            
+            const canvas = e.target;
+            const rect = canvas.getBoundingClientRect();
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            
+            // Check if click is on NPC
+            const npcType = mobileGameInstance.game.checkNPCClick(screenX, screenY);
+            if (npcType) {
+                const npc = npcType === 'bossQuestNPC' ? mobileGameInstance.game.bossQuestNPC : mobileGameInstance.game.questNPC;
+                // If dialog is active, advance it; otherwise start it
+                if (npc.isTalking) {
+                    mobileGameInstance.game.advanceDialog(npcType);
+                } else {
+                    mobileGameInstance.game.startNPCDialog(npcType);
+                }
+                e.preventDefault();
+                return;
+            }
+            
+            // If dialog is active and click is anywhere on canvas, advance dialog
+            if (mobileGameInstance.game.questNPC && mobileGameInstance.game.questNPC.isTalking) {
+                mobileGameInstance.game.advanceDialog();
+                e.preventDefault();
+                return;
+            }
+        });
+    </script>
+</body>
+</html>
+

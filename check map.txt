@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Collision Tester</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #sidebar {
+            width: 300px;
+            background: #2a2a2a;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 2px solid #444;
+        }
+        #sidebar h2 {
+            margin-bottom: 15px;
+            color: #4CAF50;
+        }
+        .layer-control {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #333;
+            border-radius: 5px;
+        }
+        .layer-control label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .layer-control input[type="checkbox"] {
+            margin-right: 10px;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        .layer-name {
+            font-weight: bold;
+            color: #fff;
+        }
+        .layer-info {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        #gameContainer {
+            flex: 1;
+            position: relative;
+            background: #1a1a1a;
+        }
+        #gameCanvas {
+            display: block;
+            background: #87CEEB;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        #status {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .collision-enabled {
+            border-left: 4px solid #4CAF50;
+        }
+        .collision-disabled {
+            border-left: 4px solid #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h2>Collision Layers</h2>
+        <div id="layerControls"></div>
+        <button onclick="resetPlayer()">Reset Player Position</button>
+        <div style="margin-top: 20px; font-size: 12px; color: #aaa;">
+            <p><strong>Controls:</strong></p>
+            <p>Arrow Keys / WASD: Move</p>
+            <p>Space: Jump</p>
+        </div>
+    </div>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="controls">
+            <div>Use checkboxes to enable/disable collision for each layer</div>
+        </div>
+        <div id="status">
+            <div>Position: <span id="playerPos">0, 0</span></div>
+            <div>Collisions: <span id="collisionCount">0</span></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const TILE_SIZE = 64;
+        
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth - 300;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        let mapData = null;
+        let collisionLayers = {}; // layer name -> boolean
+        let collisionRects = []; // Array of collision rectangles
+        let tilesets = [];
+
+        // Player
+        const player = {
+            x: 400,
+            y: 300,
+            w: 32,
+            h: 48,
+            vx: 0,
+            vy: 0,
+            onGround: false,
+            speed: 200,
+            jumpSpeed: 400,
+            gravity: 800
+        };
+
+        const keys = new Set();
+        document.addEventListener('keydown', (e) => {
+            if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' ','a','d','w','s','A','D','W','S'].includes(e.key)) {
+                e.preventDefault();
+            }
+            keys.add(e.key);
+        });
+        document.addEventListener('keyup', (e) => keys.delete(e.key));
+
+        // Load map from URL
+        async function loadMap() {
+            try {
+                const response = await fetch('https://raw.githubusercontent.com/sunsong1925/Map/8d5bd173d83095864da674d429632174a652465f/Test%20Map.tmj');
+                mapData = await response.json();
+                
+                // Initialize collision settings (default: all off)
+                mapData.layers.forEach(layer => {
+                    if (layer.type === 'tilelayer' && layer.name) {
+                        collisionLayers[layer.name] = false;
+                    }
+                });
+                
+                buildCollisionRects();
+                createLayerControls();
+                console.log('Map loaded:', mapData);
+            } catch (error) {
+                console.error('Error loading map:', error);
+                alert('Failed to load map. Check console for details.');
+            }
+        }
+
+        // Build collision rectangles from enabled layers
+        function buildCollisionRects() {
+            collisionRects = [];
+            
+            mapData.layers.forEach(layer => {
+                if (layer.type !== 'tilelayer') return;
+                if (!collisionLayers[layer.name]) return;
+                
+                // Handle chunked layers (infinite maps)
+                if (layer.chunks && layer.chunks.length > 0) {
+                    layer.chunks.forEach(chunk => {
+                        const chunkX = chunk.x * TILE_SIZE;
+                        const chunkY = chunk.y * TILE_SIZE;
+                        
+                        for (let i = 0; i < chunk.data.length; i++) {
+                            const tileId = chunk.data[i];
+                            if (tileId && tileId !== 0) {
+                                const tileX = (i % chunk.width) * TILE_SIZE + chunkX;
+                                const tileY = Math.floor(i / chunk.width) * TILE_SIZE + chunkY;
+                                
+                                collisionRects.push({
+                                    x: tileX,
+                                    y: tileY,
+                                    w: TILE_SIZE,
+                                    h: TILE_SIZE,
+                                    layer: layer.name
+                                });
+                            }
+                        }
+                    });
+                } else if (layer.data && layer.data.length > 0) {
+                    // Handle regular layers
+                    for (let i = 0; i < layer.data.length; i++) {
+                        const tileId = layer.data[i];
+                        if (tileId && tileId !== 0) {
+                            const tileX = (i % layer.width) * TILE_SIZE;
+                            const tileY = Math.floor(i / layer.width) * TILE_SIZE;
+                            
+                            collisionRects.push({
+                                x: tileX,
+                                y: tileY,
+                                w: TILE_SIZE,
+                                h: TILE_SIZE,
+                                layer: layer.name
+                            });
+                        }
+                    }
+                }
+            });
+        }
+
+        // Create layer control checkboxes
+        function createLayerControls() {
+            const container = document.getElementById('layerControls');
+            container.innerHTML = '';
+            
+            mapData.layers.forEach(layer => {
+                if (layer.type === 'tilelayer' && layer.name) {
+                    const div = document.createElement('div');
+                    div.className = `layer-control ${collisionLayers[layer.name] ? 'collision-enabled' : 'collision-disabled'}`;
+                    
+                    const label = document.createElement('label');
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.checked = collisionLayers[layer.name];
+                    checkbox.onchange = () => {
+                        collisionLayers[layer.name] = checkbox.checked;
+                        div.className = `layer-control ${checkbox.checked ? 'collision-enabled' : 'collision-disabled'}`;
+                        buildCollisionRects();
+                    };
+                    
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(layer.name));
+                    
+                    div.appendChild(label);
+                    const info = document.createElement('div');
+                    info.className = 'layer-info';
+                    info.textContent = `ID: ${layer.id} | Visible: ${layer.visible}`;
+                    div.appendChild(info);
+                    
+                    container.appendChild(div);
+                }
+            });
+        }
+
+        // AABB collision detection
+        function aabbIntersect(a, b) {
+            return a.x < b.x + b.w && a.x + a.w > b.x && 
+                   a.y < b.y + b.h && a.y + a.h > b.y;
+        }
+
+        // Check collision and resolve
+        function checkCollision(entity, dt) {
+            entity.onGround = false;
+            
+            // Horizontal collision
+            entity.x += entity.vx * dt;
+            for (const rect of collisionRects) {
+                if (aabbIntersect(entity, rect)) {
+                    if (entity.vx > 0) {
+                        entity.x = rect.x - entity.w;
+                    } else if (entity.vx < 0) {
+                        entity.x = rect.x + rect.w;
+                    }
+                    entity.vx = 0;
+                }
+            }
+            
+            // Vertical collision
+            entity.vy = Math.min(entity.vy + entity.gravity * dt, 1000);
+            entity.y += entity.vy * dt;
+            for (const rect of collisionRects) {
+                if (aabbIntersect(entity, rect)) {
+                    if (entity.vy > 0) {
+                        entity.y = rect.y - entity.h;
+                        entity.onGround = true;
+                    } else if (entity.vy < 0) {
+                        entity.y = rect.y + rect.h;
+                    }
+                    entity.vy = 0;
+                }
+            }
+        }
+
+        // Update game
+        let lastTime = 0;
+        function update(currentTime) {
+            if (!mapData) return;
+            
+            const dt = Math.min((currentTime - lastTime) / 1000, 0.033);
+            lastTime = currentTime;
+            
+            // Input
+            const left = keys.has('a') || keys.has('A') || keys.has('ArrowLeft');
+            const right = keys.has('d') || keys.has('D') || keys.has('ArrowRight');
+            const jump = keys.has('w') || keys.has('W') || keys.has('ArrowUp') || keys.has(' ');
+            
+            player.vx = (right ? 1 : 0) - (left ? 1 : 0);
+            player.vx *= player.speed;
+            
+            if (jump && player.onGround) {
+                player.vy = -player.jumpSpeed;
+                player.onGround = false;
+            }
+            
+            // Apply physics and collision
+            checkCollision(player, dt);
+            
+            // Update UI
+            document.getElementById('playerPos').textContent = 
+                `${Math.floor(player.x)}, ${Math.floor(player.y)}`;
+            document.getElementById('collisionCount').textContent = collisionRects.length;
+            
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        // Draw everything
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (!mapData) {
+                ctx.fillStyle = 'white';
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Loading map...', canvas.width / 2, canvas.height / 2);
+                return;
+            }
+            
+            // Camera follows player
+            const cameraX = player.x - canvas.width / 2;
+            const cameraY = player.y - canvas.height / 2;
+            
+            ctx.save();
+            ctx.translate(-cameraX, -cameraY);
+            
+            // Draw map layers
+            mapData.layers.forEach(layer => {
+                if (layer.type !== 'tilelayer' || !layer.visible) return;
+                
+                // Draw chunks (infinite maps)
+                if (layer.chunks && layer.chunks.length > 0) {
+                    layer.chunks.forEach(chunk => {
+                        const chunkX = chunk.x * TILE_SIZE;
+                        const chunkY = chunk.y * TILE_SIZE;
+                        
+                        for (let i = 0; i < chunk.data.length; i++) {
+                            const tileId = chunk.data[i];
+                            if (tileId && tileId !== 0) {
+                                const tileX = (i % chunk.width) * TILE_SIZE + chunkX;
+                                const tileY = Math.floor(i / chunk.width) * TILE_SIZE + chunkY;
+                                
+                                // Draw tile (simple colored rectangle for now)
+                                ctx.fillStyle = getTileColor(tileId, layer.name);
+                                ctx.fillRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                                ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                                ctx.strokeRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                            }
+                        }
+                    });
+                } else if (layer.data && layer.data.length > 0) {
+                    // Draw regular layer
+                    for (let i = 0; i < layer.data.length; i++) {
+                        const tileId = layer.data[i];
+                        if (tileId && tileId !== 0) {
+                            const tileX = (i % layer.width) * TILE_SIZE;
+                            const tileY = Math.floor(i / layer.width) * TILE_SIZE;
+                            
+                            ctx.fillStyle = getTileColor(tileId, layer.name);
+                            ctx.fillRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                            ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                            ctx.strokeRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                        }
+                    }
+                }
+            });
+            
+            // Draw collision rectangles (red outline)
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+            ctx.lineWidth = 2;
+            collisionRects.forEach(rect => {
+                ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+            });
+            
+            // Draw player
+            ctx.fillStyle = '#FF6B6B';
+            ctx.fillRect(player.x, player.y, player.w, player.h);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(player.x, player.y, player.w, player.h);
+            
+            // Draw player center point
+            ctx.fillStyle = 'yellow';
+            ctx.beginPath();
+            ctx.arc(player.x + player.w/2, player.y + player.h/2, 3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        // Get color for tile based on tile ID and layer
+        function getTileColor(tileId, layerName) {
+            // Different colors for different layers
+            const colors = {
+                'Tile Layer 1': '#5d8f3f',
+                'Layer 2': '#8B4513',
+                'Trees Layer': '#228B22',
+                'Buildings Layer.': '#654321',
+                'Decor i can Step Over': '#DDA0DD',
+                'Tile Layer 5': '#808080'
+            };
+            
+            const baseColor = colors[layerName] || '#808080';
+            
+            // Vary color slightly based on tile ID
+            const hue = (tileId * 137.508) % 360;
+            return baseColor;
+        }
+
+        function resetPlayer() {
+            player.x = 400;
+            player.y = 300;
+            player.vx = 0;
+            player.vy = 0;
+            player.onGround = false;
+        }
+
+        // Start
+        loadMap().then(() => {
+            requestAnimationFrame(update);
+        });
+    </script>
+</body>
+</html>

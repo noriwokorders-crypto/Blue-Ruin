@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tiled Map Tester - Goblin Raiders</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #gameCanvas {
+            border: 2px solid #444;
+            background: #000;
+            cursor: none;
+        }
+        .controls {
+            margin-top: 10px;
+            text-align: center;
+        }
+        .info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #2a2a2a;
+            border-radius: 5px;
+            max-width: 800px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Goblin Raiders Map Tester</h1>
+    <canvas id="gameCanvas"></canvas>
+    <div class="controls">
+        <p><strong>Controls:</strong> WASD or Arrow Keys to move | <strong>C</strong> to toggle collision boxes</p>
+    </div>
+    <div class="info">
+        <p id="status">Loading map...</p>
+        <p id="position">Position: (0, 0)</p>
+    </div>
+
+    <script src="map-loader.js"></script>
+    <script src="game-engine.js"></script>
+    <script>
+        // Initialize the game
+        const canvas = document.getElementById('gameCanvas');
+        canvas.width = 1200;
+        canvas.height = 800;
+        
+        const game = new GameEngine(canvas);
+        game.loadMap('Goblinraiders.tmj').then(() => {
+            document.getElementById('status').textContent = 'Map loaded! Use WASD or Arrow Keys to move.';
+            // Focus the canvas so it can receive keyboard events
+            canvas.focus();
+            game.start();
+        }).catch(err => {
+            document.getElementById('status').textContent = 'Error: ' + err.message;
+            console.error(err);
+        });
+    </script>
+</body>
+</html>
